@@ -3,8 +3,6 @@ pub trait DeserializeError
 {
     fn invalid_packet_id() -> Self;
 
-    fn invalid_pin_state() -> Self;
-
     fn invalid_pin_mode() -> Self;
 }
 

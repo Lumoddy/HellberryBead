@@ -1,6 +1,3 @@
-[workspace]
-members = [".", "matchine", "matchine-proc-macro"]
-
 [package]
 name = "hellberry-bead"
 version = "0.1.0"
@@ -18,8 +15,7 @@ bench = false
 [dependencies]
 nb = "1.1.0"
 embedded-hal = "1.0"
-matchine = { path = "./matchine" }
-matchine-proc-macro = { path = "./matchine-proc-macro" }
+paste = "1.0.15"
 
 [dependencies.arduino-hal]
 git = "https://github.com/rahix/avr-hal"

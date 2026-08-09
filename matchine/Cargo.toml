@@ -1,8 +1,0 @@
-[package]
-name = "matchine"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-matchine-proc-macro = { path = "../matchine-proc-macro" }
-heapless = "0.9.3"

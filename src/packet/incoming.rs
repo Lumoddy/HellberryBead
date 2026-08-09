@@ -1,80 +1,32 @@
-use embedded_hal::digital;
-
-use crate::de::{Deserialize, Deserializer};
-use crate::pin::{self, PinId};
-use crate::ser::{Serialize, Serializer};
+use crate::de::{Deserialize, Deserializer, DeserializeError};
+use crate::pin::{PinId, PinMode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Packet
 {
     Ping(Ping),
+    WholeConfig(WholeConfig),
+    GetPinPower(GetPinPower),
+    GetPinMode(GetPinMode),
+    SetPinPower(SetPinPower),
+    SetPinMode(SetPinMode),
 }
 
-impl Serialize for Packet
+impl Deserialize for Packet
 {
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
+    fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
     where
-        S: Serializer + ?Sized { ser.value(&self) }
-}
-
-impl Serialize for &Packet
-{
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
-    where
-        S: Serializer + ?Sized
+        D: Deserializer + ?Sized
     {
-        match self
+        match de.enum_tag()?
         {
-            Packet::Ok(x) =>
-            {
-                ser.enum_tag(0)?;
-                ser.value(x)
-            },
-            Packet::ConfigPin(x) =>
-            {
-                ser.enum_tag(1)?;
-                ser.value(x)
-            },
-            Packet::Config(x) =>
-            {
-                ser.enum_tag(2)?;
-                ser.value(x)
-            },
-            Packet::PinState(x) =>
-            {
-                ser.enum_tag(3)?;
-                ser.value(x)
-            },
-            Packet::PinMode(x) =>
-            {
-                ser.enum_tag(4)?;
-                ser.value(x)
-            },
-            Packet::Panic(x) =>
-            {
-                ser.enum_tag(100)?;
-                ser.value(x)
-            },
-            Packet::InvalidPacketId(x) =>
-            {
-                ser.enum_tag(101)?;
-                ser.value(x)
-            },
-            Packet::InvalidPinId(x) =>
-            {
-                ser.enum_tag(102)?;
-                ser.value(x)
-            },
-            Packet::InvalidPinState(x) =>
-            {
-                ser.enum_tag(103)?;
-                ser.value(x)
-            },
-            Packet::InvalidPinMode(x) =>
-            {
-                ser.enum_tag(104)?;
-                ser.value(x)
-            },
+            0 => Ok(Self::Ping(de.value()?)),
+            1 => Ok(Self::WholeConfig(de.value()?)),
+            2 => Ok(Self::GetPinPower(de.value()?)),
+            3 => Ok(Self::GetPinMode(de.value()?)),
+            4 => Ok(Self::SetPinPower(de.value()?)),
+            5 => Ok(Self::SetPinMode(de.value()?)),
+            _ => Err(D::Error::invalid_packet_id()),
         }
     }
 }
@@ -87,18 +39,11 @@ macro_rules! unit_impl
             #[derive(Clone, Copy, PartialEq, Eq)]
             pub struct $name;
 
-            impl Serialize for $name
+            impl Deserialize for $name
             {
-                fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
+                fn deserialize<D>(_: &mut D) -> Result<Self, D::Error>
                 where
-                    S: Serializer + ?Sized { ser.value(&self) }
-            }
-
-            impl Serialize for &$name
-            {
-                fn serialize<S>(self, _: &mut S) -> Result<(), S::Error>
-                where
-                    S: Serializer + ?Sized { Result::Ok(()) }
+                    D: Deserializer + ?Sized { Ok(Self) }
             }
         )*
     };
@@ -106,47 +51,58 @@ macro_rules! unit_impl
 
 unit_impl!
 {
-    Ok,
-    Panic,
-    InvalidPacketId,
-    InvalidPinId,
-    InvalidPinState,
-    InvalidPinMode,
+    Ping,
+    WholeConfig,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct GetPinState { pin: PinId }
+pub struct GetPinPower { pin: PinId }
 
-impl Deserialize for GetPinState
+impl Deserialize for GetPinPower
 {
     fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
     where
         D: Deserializer + ?Sized
     {
-        Self { pin: de.u8() }
+        Ok(Self { pin: de.value()? })
     }
 }
 
-impl Serialize for &GetPinState
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct GetPinMode { pin: PinId }
+
+impl Deserialize for GetPinMode
 {
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
+    fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
     where
-        S: Serializer + ?Sized { ser.value(self.state) }
+        D: Deserializer + ?Sized
+    {
+        Ok(Self { pin: de.value()? })
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct PinMode { mode: pin::PinMode }
+pub struct SetPinPower { pin: PinId, power: u8 }
 
-impl Serialize for PinMode
+impl Deserialize for SetPinPower
 {
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
+    fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
     where
-        S: Serializer + ?Sized { ser.value(&self) }
+        D: Deserializer + ?Sized
+    {
+        Ok(Self { pin: de.value()?, power: de.value()? })
+    }
 }
 
-impl Serialize for &PinMode
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SetPinMode { pin: PinId, mode: PinMode }
+
+impl Deserialize for SetPinMode
 {
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
+    fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
     where
-        S: Serializer + ?Sized { ser.value(self.mode) }
+        D: Deserializer + ?Sized
+    {
+        Ok(Self { pin: de.value()?, mode: de.value()? })
+    }
 }

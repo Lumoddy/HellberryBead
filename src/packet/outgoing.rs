@@ -16,6 +16,7 @@ pub enum Packet<'a>
     InvalidPinId(InvalidPinId),
     InvalidPinMode(InvalidPinMode),
     InvalidEscape(InvalidEscape),
+    InvalidMissingStart(InvalidMissingStart),
     InvalidSetInputPinPower(InvalidSetInputPinPower),
     InvalidUnsupportedPinMode(InvalidUnsupportedPinMode),
 }
@@ -59,8 +60,9 @@ impl Serialize for &Packet<'_>
             Packet::InvalidPinId(x) => value!(102, x),
             Packet::InvalidPinMode(x) => value!(103, x),
             Packet::InvalidEscape(x) => value!(104, x),
-            Packet::InvalidSetInputPinPower(x) => value!(105, x),
-            Packet::InvalidUnsupportedPinMode(x) => value!(106, x),
+            Packet::InvalidMissingStart(x) => value!(105, x),
+            Packet::InvalidSetInputPinPower(x) => value!(106, x),
+            Packet::InvalidUnsupportedPinMode(x) => value!(107, x),
         }
     }
 }
@@ -101,6 +103,7 @@ unit_impl!
     InvalidPinPower,
     InvalidPinMode,
     InvalidEscape,
+    InvalidMissingStart,
     InvalidSetInputPinPower,
     InvalidUnsupportedPinMode,
 }
@@ -114,7 +117,7 @@ impl ConfigPinFlags
 
     pub const fn can_digital_read(&self) -> bool { self.0 & 0x1 != 0 }
 
-    pub const fn set_can_digital_read(&mut self, flag: bool) -> &mut Self
+    pub const fn set_can_digital_input(&mut self, flag: bool) -> &mut Self
     {
         if flag { self.0 = self.0 | 0x1 }
         else { self.0 = self.0 & !0x1 }
@@ -123,7 +126,7 @@ impl ConfigPinFlags
 
     pub const fn can_digital_write(&self) -> bool { self.0 & 0x2 != 0 }
 
-    pub const fn set_can_digital_write(&mut self, flag: bool) -> &mut Self
+    pub const fn set_can_digital_output(&mut self, flag: bool) -> &mut Self
     {
         if flag { self.0 = self.0 | 0x2 }
         else { self.0 = self.0 & !0x2 }
@@ -132,7 +135,7 @@ impl ConfigPinFlags
 
     pub const fn can_analog_read(&self) -> bool { self.0 & 0x4 != 0 }
 
-    pub const fn set_can_analog_read(&mut self, flag: bool) -> &mut Self
+    pub const fn set_can_analog_input(&mut self, flag: bool) -> &mut Self
     {
         if flag { self.0 = self.0 | 0x4 }
         else { self.0 = self.0 & !0x4 }
@@ -141,7 +144,7 @@ impl ConfigPinFlags
 
     pub const fn can_analog_write(&self) -> bool { self.0 & 0x8 != 0 }
 
-    pub const fn set_can_analog_write(&mut self, flag: bool) -> &mut Self
+    pub const fn set_can_analog_output(&mut self, flag: bool) -> &mut Self
     {
         if flag { self.0 = self.0 | 0x8 }
         else { self.0 = self.0 & !0x8 }
@@ -164,7 +167,7 @@ impl Serialize for &ConfigPinFlags
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ConfigPin<'a> { name: &'a str, flags: ConfigPinFlags }
+pub struct ConfigPin<'a> { pub name: &'a str, pub flags: ConfigPinFlags }
 
 impl Serialize for ConfigPin<'_>
 {
@@ -181,7 +184,7 @@ impl Serialize for &ConfigPin<'_>
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Config<'a> { name: &'a str, pins: &'a [ConfigPin<'a>] }
+pub struct Config<'a> { pub name: &'a str, pub pins: &'a [ConfigPin<'a>] }
 
 impl Serialize for Config<'_>
 {
@@ -198,7 +201,7 @@ impl Serialize for &Config<'_>
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct GetPinPowerResponse { power: u16 }
+pub struct GetPinPowerResponse { pub power: u16 }
 
 impl Serialize for GetPinPowerResponse
 {
@@ -215,7 +218,7 @@ impl Serialize for &GetPinPowerResponse
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct GetPinModeResponse { mode: pin::PinMode }
+pub struct GetPinModeResponse { pub mode: pin::PinMode }
 
 impl Serialize for GetPinModeResponse
 {
@@ -232,7 +235,7 @@ impl Serialize for &GetPinModeResponse
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ListenPinPower { power: u16 }
+pub struct ListenPinPower { pub power: u16 }
 
 impl Serialize for ListenPinPower
 {

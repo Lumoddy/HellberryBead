@@ -43,42 +43,6 @@ impl Deserialize for PinId
         D: Deserializer + ?Sized { Ok(Self(de.u8()?)) }
 }
 
-impl Serialize for digital::PinState
-{
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
-    where
-        S: Serializer + ?Sized { ser.value(&self) }
-}
-
-impl Serialize for &digital::PinState
-{
-    fn serialize<S>(self, ser: &mut S) -> Result<(), S::Error>
-    where
-        S: Serializer + ?Sized
-    {
-        ser.enum_tag(match self
-        {
-            digital::PinState::Low => 0,
-            digital::PinState::High => 1,
-        })
-    }
-}
-
-impl Deserialize for digital::PinState
-{
-    fn deserialize<D>(de: &mut D) -> Result<Self, D::Error>
-    where
-        D: Deserializer + ?Sized
-    {
-        match de.enum_tag()?
-        {
-            0 => Ok(digital::PinState::Low),
-            1 => Ok(digital::PinState::High),
-            _ => Err(D::Error::invalid_pin_state())
-        }
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PinMode
 {
@@ -131,7 +95,7 @@ impl Deserialize for PinMode
     }
 }
 
-pub trait InterPin<TC>
+pub trait InterPin
 {
     fn get_power(&mut self, adc: &mut arduino_hal::adc::Adc) -> u16;
 
@@ -139,9 +103,12 @@ pub trait InterPin<TC>
 
     fn get_mode(&self) -> PinMode;
 
-    fn set_mode(&mut self, mode: PinMode, timer: &TC, adc: &mut arduino_hal::adc::Adc) -> Result<(), outgoing::Packet>;
-
     fn poll_listen(&mut self) -> Option<u16>;
+}
+
+pub trait InterPin2<TC>: InterPin
+{
+    fn set_mode(&mut self, mode: PinMode, timer: &TC, adc: &mut arduino_hal::adc::Adc) -> Result<(), outgoing::Packet>;
 }
 
 const SET_INPUT_PIN_POWER: outgoing::Packet<'_> = outgoing::Packet::InvalidSetInputPinPower(outgoing::InvalidSetInputPinPower);
@@ -156,7 +123,7 @@ where
     DigitalOutput { pin: Pin<mode::Output, PIN> },
 }
 
-impl<TC, PIN> InterPin<TC> for DiDoInterPin<PIN>
+impl<PIN> InterPin for DiDoInterPin<PIN>
 where
     PIN: arduino_hal::port::PinOps,
 {
@@ -193,6 +160,26 @@ where
         }
     }
 
+    fn poll_listen(&mut self) -> Option<u16>
+    {
+        match self
+        {
+            Self::DigitalListening { pin, last_state } =>
+            {
+                let new_state = pin.is_high();
+                if new_state == *last_state { return None };
+                *last_state = new_state;
+                Some(new_state as u16)
+            },
+            _ => None,
+        }
+    }
+}
+
+impl<TC, PIN> InterPin2<TC> for DiDoInterPin<PIN>
+where
+    PIN: arduino_hal::port::PinOps,
+{
     fn set_mode(&mut self, mode: PinMode, _: &TC, _: &mut arduino_hal::adc::Adc) -> Result<(), outgoing::Packet>
     {
         unsafe
@@ -225,21 +212,6 @@ where
                 }))
         }
     }
-
-    fn poll_listen(&mut self) -> Option<u16>
-    {
-        match self
-        {
-            Self::DigitalListening { pin, last_state } =>
-            {
-                let new_state = pin.is_high();
-                if new_state == *last_state { return None };
-                *last_state = new_state;
-                Some(new_state as u16)
-            },
-            _ => None,
-        }
-    }
 }
 
 pub enum DiDoAiInterPin<PIN>
@@ -253,7 +225,7 @@ where
     AnalogInput { pin: Pin<mode::Analog, PIN> },
 }
 
-impl<TC, PIN> InterPin<TC> for DiDoAiInterPin<PIN>
+impl<PIN> InterPin for DiDoAiInterPin<PIN>
 where
     PIN: arduino_hal::port::PinOps,
     Pin<mode::Analog, PIN>: arduino_hal::adc::AdcChannel<Atmega, arduino_hal::pac::ADC>,
@@ -293,6 +265,27 @@ where
         }
     }
 
+    fn poll_listen(&mut self) -> Option<u16>
+    {
+        match self
+        {
+            Self::DigitalListening { pin, last_state } =>
+            {
+                let new_state = pin.is_high();
+                if new_state == *last_state { return None };
+                *last_state = new_state;
+                Some(new_state as u16)
+            },
+            _ => None,
+        }
+    }
+}
+
+impl<TC, PIN> InterPin2<TC> for DiDoAiInterPin<PIN>
+where
+    PIN: arduino_hal::port::PinOps,
+    Pin<mode::Analog, PIN>: arduino_hal::adc::AdcChannel<Atmega, arduino_hal::pac::ADC>,
+{
     fn set_mode(&mut self, mode: PinMode, _: &TC, adc: &mut arduino_hal::adc::Adc) -> Result<(), outgoing::Packet>
     {
         unsafe
@@ -336,21 +329,6 @@ where
                 }))
         }
     }
-
-    fn poll_listen(&mut self) -> Option<u16>
-    {
-        match self
-        {
-            Self::DigitalListening { pin, last_state } =>
-            {
-                let new_state = pin.is_high();
-                if new_state == *last_state { return None };
-                *last_state = new_state;
-                Some(new_state as u16)
-            },
-            _ => None,
-        }
-    }
 }
 
 pub enum DiDoAoInterPin<TC, PIN>
@@ -363,7 +341,7 @@ where
     AnalogOutput { pin: Pin<mode::PwmOutput<TC>, PIN> },
 }
 
-impl<TC, PIN> InterPin<TC> for DiDoAoInterPin<TC, PIN>
+impl<TC, PIN> InterPin for DiDoAoInterPin<TC, PIN>
 where
     PIN: arduino_hal::port::PinOps + arduino_hal::simple_pwm::PwmPinOps<TC, Duty: Into<u16>>,
 {
@@ -403,6 +381,26 @@ where
         }
     }
 
+    fn poll_listen(&mut self) -> Option<u16>
+    {
+        match self
+        {
+            Self::DigitalListening { pin, last_state } =>
+            {
+                let new_state = pin.is_high();
+                if new_state == *last_state { return None };
+                *last_state = new_state;
+                Some(new_state as u16)
+            },
+            _ => None,
+        }
+    }
+}
+
+impl<TC, PIN> InterPin2<TC> for DiDoAoInterPin<TC, PIN>
+where
+    PIN: arduino_hal::port::PinOps + arduino_hal::simple_pwm::PwmPinOps<TC, Duty: Into<u16>>,
+{
     fn set_mode(&mut self, mode: PinMode, timer: &TC, _: &mut arduino_hal::adc::Adc) -> Result<(), outgoing::Packet>
     {
         unsafe
@@ -444,21 +442,6 @@ where
                         _ => return Err(UNSUPPORTED_PIN_MODE),
                     },
                 }))
-        }
-    }
-
-    fn poll_listen(&mut self) -> Option<u16>
-    {
-        match self
-        {
-            Self::DigitalListening { pin, last_state } =>
-            {
-                let new_state = pin.is_high();
-                if new_state == *last_state { return None };
-                *last_state = new_state;
-                Some(new_state as u16)
-            },
-            _ => None,
         }
     }
 }

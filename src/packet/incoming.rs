@@ -56,7 +56,7 @@ unit_impl!
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct GetPinPower { pin: PinId }
+pub struct GetPinPower { pub pin: PinId }
 
 impl Deserialize for GetPinPower
 {
@@ -69,7 +69,7 @@ impl Deserialize for GetPinPower
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct GetPinMode { pin: PinId }
+pub struct GetPinMode { pub pin: PinId }
 
 impl Deserialize for GetPinMode
 {
@@ -82,7 +82,7 @@ impl Deserialize for GetPinMode
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct SetPinPower { pin: PinId, power: u8 }
+pub struct SetPinPower { pub pin: PinId, pub power: u8 }
 
 impl Deserialize for SetPinPower
 {
@@ -95,7 +95,7 @@ impl Deserialize for SetPinPower
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct SetPinMode { pin: PinId, mode: PinMode }
+pub struct SetPinMode { pub pin: PinId, pub mode: PinMode }
 
 impl Deserialize for SetPinMode
 {

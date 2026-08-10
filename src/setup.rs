@@ -46,31 +46,34 @@ macro_rules! with_pins
     {
         $macro!
         {
-            a0: PC0 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
-            a1: PC1 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
-            a2: PC2 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
-            a3: PC3 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
-            a4: PC4 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
-            a5: PC5 = { digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a0: PC0 = { display: "A0", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a1: PC1 = { display: "A1", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a2: PC2 = { display: "A2", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a3: PC3 = { display: "A3", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a4: PC4 = { display: "A4", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
+            a5: PC5 = { display: "A5", digital_in: true, digital_out: true, analog_in: true, analog_out: false, },
 
-            // d0: PD0 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false },
-            // d1: PD1 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false },
-            d2: PD2 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
-            d3: PD3 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 2, },
-            d4: PD4 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
-            d5: PD5 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 0, },
-            d6: PD6 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 0, },
-            d7: PD7 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            // d0: PD0 = { display: "0", digital_in: true, digital_out: true, analog_in: false, analog_out: false },
+            // d1: PD1 = { display: "1", digital_in: true, digital_out: true, analog_in: false, analog_out: false },
+            d2: PD2 = { display: "2", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            d3: PD3 = { display: "3", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 2, },
+            d4: PD4 = { display: "4", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            d5: PD5 = { display: "5", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 0, },
+            d6: PD6 = { display: "6", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 0, },
+            d7: PD7 = { display: "7", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
 
-            d8: PB0 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
-            d9: PB1 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 1, },
-            d10: PB2 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 1, },
-            d11: PB3 = { digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 2, },
-            d12: PB4 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
-            d13: PB5 = { digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            d8: PB0 = { display: "8", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            d9: PB1 = { display: "9", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 1, },
+            d10: PB2 = { display: "10", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 1, },
+            d11: PB3 = { display: "11", digital_in: true, digital_out: true, analog_in: false, analog_out: true, analog_timer: 2, },
+            d12: PB4 = { display: "12", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
+            d13: PB5 = { display: "13", digital_in: true, digital_out: true, analog_in: false, analog_out: false, },
         }
     };
 }
+
+#[cfg(feature = "arduino-uno")]
+pub const BOARD_NAME: &str = "arduino-uno";
 
 #[cfg(not(any(feature = "arduino-uno")))]
 compile_error!("unknown board type");

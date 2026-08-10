@@ -1,17 +1,14 @@
 #![no_std]
 #![no_main]
-#![allow(static_mut_refs)]
-#![feature(abi_avr_interrupt)]
 
 use core::convert::Infallible;
 
 use arduino_hal::prelude::*;
-use arduino_hal::simple_pwm::IntoPwmPin;
 use de::{DeserializeError, Deserializer};
-use packet::outgoing;
-use pin::{DiDoAiInterPin, DiDoAoInterPin, DiDoInterPin, inter_from_config};
-use ser::Serializer;
-use setup::{with_pins, with_pwm_timers};
+use packet::{incoming, outgoing};
+use pin::{DiDoAiInterPin, DiDoAoInterPin, DiDoInterPin, InterPin, InterPin2, inter_from_config};
+use ser::{Serializer};
+use setup::{BOARD_NAME, with_pins, with_pwm_timers};
 
 mod panic_handler;
 mod setup;
@@ -119,7 +116,7 @@ fn main() -> !
 {
     let dp = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(dp);
-    let mut serial = arduino_hal::default_serial!(dp, pins, 9600);
+    let serial = arduino_hal::default_serial!(dp, pins, 9600);
     let mut adc = arduino_hal::Adc::new(dp.ADC, arduino_hal::adc::AdcSettings::default());
 
     macro_rules! init_pwn_timers
@@ -136,12 +133,12 @@ fn main() -> !
         };
     }
 
-    let mut pwm_timers = with_pwm_timers!(init_pwn_timers);
+    let pwm_timers = with_pwm_timers!(init_pwn_timers);
 
-    let (mut read, mut write) = serial.split();
+    let (mut reader, mut writer) = serial.split();
 
-    let mut read = EscapedReader(|| read.read());
-    let mut write = EscapedWriter(|x| write.write(x));
+    let mut reader = EscapedReader(|| reader.read());
+    let mut writer = EscapedWriter(|x| writer.write(x));
 
     macro_rules! program_from_pins
     {
@@ -149,11 +146,15 @@ fn main() -> !
             $(
                 $name:ident : $port:ident =
                 {
+                    display: $display_name:literal ,
                     digital_in: $digital_in:literal ,
                     digital_out: $digital_out:literal ,
                     analog_in: $analog_in:literal ,
                     analog_out: $analog_out:literal ,
-                    $(analog_timer: $analog_timer_index:literal , )?
+                    $(
+                        analog_timer: $analog_timer_index:literal ,
+                        $( $analog_timer_marker:lifetime )?
+                    )?
                 } ,
             )*
         )
@@ -179,13 +180,189 @@ fn main() -> !
                         };
                     )*
 
-                    
+                    loop
+                    {
+                        $(
+                            if let Some(power) = [<inter_ $name >] .poll_listen()
+                            {
+                                let Ok(()) = writer.start();
+                                let Ok(()) = writer.value(
+                                    outgoing::Packet::ListenPinPower(outgoing::ListenPinPower { power }));
+                            }
+                        )*
+
+                        match (reader.0)()
+                        {
+                            Ok(CONTROL) if nb::block!((reader.0)()) == Ok(START) => 'packet: loop
+                            {
+                                match reader.value()
+                                {
+                                    Ok(incoming::Packet::Ping(incoming::Ping)) =>
+                                    {
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(
+                                            outgoing::Packet::Pong(outgoing::Pong));
+                                    },
+                                    Ok(incoming::Packet::WholeConfig(incoming::WholeConfig)) =>
+                                    {
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(
+                                            outgoing::Packet::Config(outgoing::Config
+                                            {
+                                                name: BOARD_NAME,
+                                                pins:
+                                                &[
+                                                    $(
+                                                        outgoing::ConfigPin
+                                                        {
+                                                            name: $display_name,
+                                                            flags: *outgoing::ConfigPinFlags::new()
+                                                                .set_can_digital_input($digital_in)
+                                                                .set_can_digital_output($digital_out)
+                                                                .set_can_analog_input($analog_in)
+                                                                .set_can_analog_output($analog_out),
+                                                        },
+                                                    )*
+                                                ],
+                                            }));
+                                    },
+                                    Ok(incoming::Packet::GetPinPower(incoming::GetPinPower { pin })) =>
+                                    {
+                                        let power = 'power:
+                                        {
+                                            let i = 0;
+
+                                            $(
+                                                if pin.0 == i
+                                                {
+                                                    break 'power [<inter_ $name >] .get_power(&mut adc);
+                                                }
+
+                                                #[allow(unused)]
+                                                let i = i + 1;
+                                            )*
+
+                                            let Ok(()) = writer.start();
+                                            let Ok(()) = writer.value(
+                                                outgoing::Packet::InvalidPinId(outgoing::InvalidPinId));
+
+                                            break 'packet;
+                                        };
+
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(
+                                            outgoing::Packet::GetPinPowerResponse(outgoing::GetPinPowerResponse { power }));
+                                    },
+                                    Ok(incoming::Packet::GetPinMode(incoming::GetPinMode { pin })) =>
+                                    {
+                                        let mode = 'mode:
+                                        {
+                                            let i = 0;
+
+                                            $(
+                                                if pin.0 == i
+                                                {
+                                                    break 'mode [<inter_ $name >] .get_mode();
+                                                }
+
+                                                #[allow(unused)]
+                                                let i = i + 1;
+                                            )*
+
+                                            let Ok(()) = writer.start();
+                                            let Ok(()) = writer.value(
+                                                outgoing::Packet::InvalidPinId(outgoing::InvalidPinId));
+
+                                            break 'packet;
+                                        };
+
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(
+                                            outgoing::Packet::GetPinModeResponse(outgoing::GetPinModeResponse { mode }));
+                                    },
+                                    Ok(incoming::Packet::SetPinPower(incoming::SetPinPower { pin, power })) =>
+                                    {
+                                        let response = 'power:
+                                        {
+                                            let i = 0;
+
+                                            $(
+                                                if pin.0 == i
+                                                {
+                                                    break 'power [<inter_ $name >] .set_power(power);
+                                                }
+
+                                                #[allow(unused)]
+                                                let i = i + 1;
+                                            )*
+
+                                            let Ok(()) = writer.start();
+                                            let Ok(()) = writer.value(
+                                                outgoing::Packet::InvalidPinId(outgoing::InvalidPinId));
+
+                                            break 'packet;
+                                        }
+                                            .err().unwrap_or(outgoing::Packet::SetPinPowerResponse(outgoing::SetPinPowerResponse));
+
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(response);
+                                    },
+                                    Ok(incoming::Packet::SetPinMode(incoming::SetPinMode { pin, mode })) =>
+                                    {
+                                        let response = 'mode:
+                                        {
+                                            let i = 0;
+
+                                            $(
+                                                if pin.0 == i
+                                                {
+                                                    #[cfg(all(true $( $( $analog_timer_marker:lifetime )? , false )?))]
+                                                    break 'mode [<inter_ $name >]
+                                                        .set_mode(mode, &(), &mut adc);
+                                                    $(
+                                                        break 'mode [<inter_ $name >]
+                                                            .set_mode(mode, &pwm_timers. $analog_timer_index, &mut adc);
+                                                    )?
+                                                }
+
+                                                #[allow(unused)]
+                                                let i = i + 1;
+                                            )*
+
+                                            let Ok(()) = writer.start();
+                                            let Ok(()) = writer.value(
+                                                outgoing::Packet::InvalidPinId(outgoing::InvalidPinId));
+
+                                            break 'packet;
+                                        }
+                                            .err().unwrap_or(outgoing::Packet::SetPinModeResponse(outgoing::SetPinModeResponse));
+
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(response);
+                                    },
+                                    Err(EscapedReaderError::EncounteredNewBeginning) => continue,
+                                    Err(EscapedReaderError::Other(packet)) =>
+                                    {
+                                        let Ok(()) = writer.start();
+                                        let Ok(()) = writer.value(packet);
+                                    },
+                                }
+
+                                break 'packet;
+                            },
+                            Ok(_) =>
+                            {
+                                let Ok(()) = writer.start();
+                                let Ok(()) = writer.value(
+                                    outgoing::Packet::InvalidMissingStart(outgoing::InvalidMissingStart));
+                            },
+                            Err(nb::Error::WouldBlock) => continue,
+                        }
+                    }
                 }
             }
         };
     }
 
     with_pins!(program_from_pins);
-
-    todo!()
 }

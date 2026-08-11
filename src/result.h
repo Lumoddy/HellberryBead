@@ -1,3 +1,8 @@
+#ifndef result_h
+#define result_h
+
+#include <new>
+#include "result.h"
 
 template<typename T, typename E>
 struct Result
@@ -7,75 +12,187 @@ private:
     {
         T ok;
         E err;
+
+        constexpr Data() { }
+        ~Data() { }
     };
 
-    bool isErr;
+    bool tag;
     Data data;
 
-public:
-    Result(const T ok) 
+private:
+    Result(E err, int) : tag(true)
     {
-        this->isErr = false;
-        this->data.ok = ok;
+        ::new(&data.err) E(err);
     }
 
-    Result(const Result<T, E>& original) 
+public:
+    Result(T ok) : tag(false)
     {
-        this->isErr = original.isErr;
-        if (this->isErr)
-            this->data.err = original.data.err;
+        ::new(&data.ok) T(ok);
+    }
+
+    Result(const Result<T, E>& original) : tag(original.tag)
+    {
+        if (tag)
+            ::new(&data.err) E(original.data.err);
         else
-            this->data.ok = original.data.ok;
+            ::new(&data.ok) T(original.data.ok);
     }
 
     ~Result()
     {
-        if (this->isErr)
-            this->data.err.~E();
+        if (tag)
+            data.err.~E();
         else
-            this->data.ok.~T();
+            data.ok.~T();
     }
 
-    [[nodiscard]] constexpr static Result<T, E> ok(T value)
+    Result<T, E>& operator=(const Result<T, E>& other)
     {
-        Result<T, E> result;
-        result.isErr = false;
-        result.data.ok = value;
-        return result;
+        if (this != &other)
+        {
+            if (tag)
+            {
+                if (other.tag)
+                {
+                    data.err = other.data.err;
+                }
+                else
+                {
+                    tag = false;
+                    data.err.~E();
+                    ::new(&data.ok) T(other.data.ok);
+                }
+            }
+            else
+            {
+                if (other.tag)
+                {
+                    tag = true;
+                    data.ok.~T();
+                    ::new(&data.err) E(other.data.err);
+                }
+                else
+                {
+                    data.ok = other.data.ok;
+                }
+            }
+        }
+        return *this;
     }
 
-    [[nodiscard]] constexpr static Result<T, E> err(E value)
+    static constexpr Result<T, E> makeOk(T value)
     {
-        Result<T, E> result;
-        result.isErr = true;
-        result.data.err = value;
-        return result;
+        return Result<T, E>(value);
     }
 
+    static constexpr Result<T, E> makeErr(E value)
+    {
+        return Result<T, E>(value, 0);
+    }
+
+public:
     [[nodiscard]] constexpr bool isOk() const
     {
-        return !isErr;
+        return !tag;
     }
 
     [[nodiscard]] constexpr bool isErr() const
     {
-        return isErr;
+        return tag;
     }
 
-    [[nodiscard]] constexpr Result<T, void> ok() const
+    [[nodiscard]] T* ok()
     {
-        if (!this->isErr)
-            return Result<T, void>::ok(this->data.ok);
-        else
-            return Result<T, void>::err();
+        return tag ? nullptr : &data.ok;
     }
 
-    [[nodiscard]] constexpr Result<T, void> err() const
+    [[nodiscard]] constexpr const T* ok() const
     {
-        if (this->isErr)
-            return Result<T, void>::ok(this->data.err);
-        else
-            return Result<T, void>::err();
+        return tag ? nullptr : &data.ok;
+    }
+
+    [[nodiscard]] E* err()
+    {
+        return tag ? &data.err : nullptr;
+    }
+
+    [[nodiscard]] constexpr const E* err() const
+    {
+        return tag ? &data.err : nullptr;
+    }
+
+    [[nodiscard]] T& okOr(T& other)
+    {
+        return tag ? other : data.ok;
+    }
+
+    [[nodiscard]] const T& okOr(const T& other) const
+    {
+        return tag ? other : data.ok;
+    }
+
+    [[nodiscard]] E& errOr(E& other)
+    {
+        return tag ? data.err : other;
+    }
+
+    [[nodiscard]] const E& errOr(const E& other) const
+    {
+        return tag ? data.err : other;
+    }
+};
+
+template<>
+struct Result<void, void>
+{
+private:
+    bool tag;
+
+private:
+    constexpr Result(int) : tag(true) { }
+
+public:
+    constexpr Result() : tag(false) { }
+
+    constexpr Result(const Result<void, void>& original) : tag(original.tag) { }
+
+    Result<void, void>& operator=(const Result<void, void>& other)
+    {
+        if (this != &other) { tag = other.tag; }
+        return *this;
+    }
+
+    static constexpr Result<void, void> makeOk()
+    {
+        return Result<void, void>();
+    }
+
+    static constexpr Result<void, void> makeErr()
+    {
+        return Result<void, void>(0);
+    }
+
+public:
+    [[nodiscard]] constexpr bool isOk() const
+    {
+        return !tag;
+    }
+
+    [[nodiscard]] constexpr bool isErr() const
+    {
+        return tag;
+    }
+
+    [[nodiscard]] constexpr bool ok() const
+    {
+        return !tag;
+    }
+
+    [[nodiscard]] constexpr bool err() const
+    {
+        return tag;
     }
 };
 
@@ -87,69 +204,117 @@ private:
     {
         T ok;
         char err;
+
+        constexpr Data() { }
+        ~Data() { }
     };
 
-    bool isErr;
+    bool tag;
     Data data;
 
+private:
+    constexpr Result(char, int) : tag(true) { }
+
 public:
-    Result(const Result<T, void>& original) 
+    Result(T ok) : tag(false)
     {
-        this->isErr = original.isErr;
-        if (!this->isErr)
-            this->data.ok = original.data.ok;
+        ::new(&data.ok) T(ok);
+    }
+
+    Result(const Result<T, void>& original) : tag(original.tag)
+    {
+        if (!tag)
+            ::new(&data.ok) T(original.data.ok);
     }
 
     ~Result()
     {
-        if (!this->isErr)
-            this->data.ok.~T();
+        if (!tag)
+            data.ok.~T();
     }
 
-    [[nodiscard]] constexpr static Result<T, void> ok(T value)
+    Result<T, void>& operator=(const Result<T, void>& other)
     {
-        Result<T, void> result;
-        result.isErr = false;
-        result.data.ok = value;
-        return result;
+        if (this != &other)
+        {
+            if (tag)
+            {
+                if (!other.tag)
+                {
+                    tag = false;
+                    ::new(&data.ok) T(other.data.ok);
+                }
+            }
+            else
+            {
+                if (other.tag)
+                {
+                    tag = true;
+                    data.ok.~T();
+                }
+                else
+                {
+                    data.ok = other.data.ok;
+                }
+            }
+        }
+        return *this;
     }
 
-    [[nodiscard]] constexpr static Result<void, void> err(void)
+    static constexpr Result<T, void> makeOk(T value)
     {
-        Result<void, void> result;
-        result.isErr = true;
-        return result;
+        return Result<T, void>(value);
     }
 
+    static constexpr Result<T, void> makeErr()
+    {
+        return Result<T, void>(0, 0);
+    }
+
+public:
     [[nodiscard]] constexpr bool isOk() const
     {
-        return !isErr;
+        return !tag;
     }
 
     [[nodiscard]] constexpr bool isErr() const
     {
-        return isErr;
+        return tag;
     }
 
-    [[nodiscard]] constexpr Result<T, void> ok() const
+    [[nodiscard]] T* ok()
     {
-        if (!this->isErr)
-            return Result<T, void>::ok(this->data.ok);
-        else
-            return Result<T, void>::err();
+        return tag ? nullptr : &data.ok;
     }
 
-    [[nodiscard]] constexpr Result<void, void> err() const
+    [[nodiscard]] constexpr const T* ok() const
     {
-        if (this->isErr)
-            return Result<void, void>::ok();
-        else
-            return Result<void, void>::err();
+        return tag ? nullptr : &data.ok;
     }
 
-    constexpr T operator *() const
+    [[nodiscard]] constexpr bool err() const
     {
-        return this->data.ok;
+        return tag;
+    }
+
+    [[nodiscard]] T& okOr(T& other)
+    {
+        return tag ? other : data.ok;
+    }
+
+    [[nodiscard]] const T& okOr(const T& other) const
+    {
+        return tag ? other : data.ok;
+    }
+
+    [[nodiscard]] constexpr T& operator*() const
+    {
+        return data.ok;
+    }
+
+    [[nodiscard]] constexpr T* operator->() const
+    {
+        return &data.ok;
     }
 };
 
@@ -161,116 +326,108 @@ private:
     {
         char ok;
         E err;
+
+        constexpr Data() { }
+        ~Data() { }
     };
 
-    bool isErr;
+    bool tag;
     Data data;
 
-public:
-    Result(const Result<void, E>& original) 
+private:
+    Result(E err, int) : tag(true)
     {
-        this->isErr = original.isErr;
-        if (this->isErr)
-            this->data.err = original.data.err;
+        ::new(&data.err) E(err);
+    }
+
+public:
+    constexpr Result() : tag(false) { }
+
+    Result(const Result<void, E>& original) : tag(original.tag)
+    {
+        if (tag)
+            ::new(&data.err) E(original.data.err);
     }
 
     ~Result()
     {
-        if (this->isErr)
-            this->data.err.~E();
+        if (tag)
+            data.err.~E();
     }
 
-    [[nodiscard]] constexpr static Result<void, void> ok(void)
+    Result<void, E>& operator=(const Result<void, E>& other)
     {
-        Result<void, void> result;
-        result.isErr = false;
-        return result;
+        if (this != &other)
+        {
+            if (tag)
+            {
+                if (other.tag)
+                {
+                    data.err = other.data.err;
+                }
+                else
+                {
+                    tag = false;
+                    data.err.~E();
+                }
+            }
+            else
+            {
+                if (other.tag)
+                {
+                    tag = true;
+                    ::new(&data.err) E(other.data.err);
+                }
+            }
+        }
+        return *this;
     }
 
-    [[nodiscard]] constexpr static Result<void, E> err(E value)
+    static constexpr Result<void, E> makeOk()
     {
-        Result<void, E> result;
-        result.isErr = true;
-        result.data.err = value;
-        return result;
+        return Result<void, E>();
     }
 
-    [[nodiscard]] constexpr bool isOk() const
+    static constexpr Result<void, E> makeErr(E value)
     {
-        return !isErr;
+        return Result<void, E>(value, 0);
     }
-
-    [[nodiscard]] constexpr bool isErr() const
-    {
-        return isErr;
-    }
-
-    [[nodiscard]] constexpr Result<void, void> ok() const
-    {
-        if (!this->isErr)
-            return Result<T, void>::ok();
-        else
-            return Result<T, void>::err();
-    }
-
-    [[nodiscard]] constexpr Result<E, void> err() const
-    {
-        if (this->isErr)
-            return Result<T, void>::ok(this->data.err);
-        else
-            return Result<T, void>::err();
-    }
-};
-
-template<typename T, typename E>
-struct Result<void, void>
-{
-private:
-    bool isErr;
 
 public:
-    Result(const Result<void, void>& original) 
-    {
-        this->isErr = original.isErr;
-    }
-
-    [[nodiscard]] constexpr static Result<void, void> ok(void)
-    {
-        Result<void, void> result;
-        result.isErr = false;
-        return result;
-    }
-
-    [[nodiscard]] constexpr static Result<void, void> err(void)
-    {
-        Result<void, void> result;
-        result.isErr = true;
-        return result;
-    }
-
     [[nodiscard]] constexpr bool isOk() const
     {
-        return !isErr;
+        return !tag;
     }
 
     [[nodiscard]] constexpr bool isErr() const
     {
-        return isErr;
+        return tag;
     }
 
-    [[nodiscard]] constexpr Result<void, void> ok() const
+    [[nodiscard]] constexpr bool ok() const
     {
-        if (!this->isErr)
-            return Result<T, void>::ok();
-        else
-            return Result<T, void>::err();
+        return !tag;
     }
 
-    [[nodiscard]] constexpr Result<void, void> err() const
+    [[nodiscard]] E* err()
     {
-        if (this->isErr)
-            return Result<T, void>::ok();
-        else
-            return Result<T, void>::err();
+        return tag ? &data.err : nullptr;
+    }
+
+    [[nodiscard]] constexpr const E* err() const
+    {
+        return tag ? &data.err : nullptr;
+    }
+
+    [[nodiscard]] E& errOr(E& other)
+    {
+        return tag ? data.err : other;
+    }
+
+    [[nodiscard]] const E& errOr(const E& other) const
+    {
+        return tag ? data.err : other;
     }
 };
+
+#endif

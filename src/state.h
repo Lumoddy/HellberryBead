@@ -61,7 +61,7 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalOutput: digitalWrite(pin, power);
+            case PinMode::DigitalOutput: digitalWrite(pin, power); break;
             default:
                 return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { });
         }
@@ -144,7 +144,7 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalOutput: digitalWrite(pin, power);
+            case PinMode::DigitalOutput: digitalWrite(pin, power); break;
             default:
                 return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { });
         }
@@ -231,8 +231,8 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalOutput: digitalWrite(pin, power);
-            case PinMode::AnalogOutput: analogWrite(pin, power);
+            case PinMode::DigitalOutput: digitalWrite(pin, power); break;
+            case PinMode::AnalogOutput: analogWrite(pin, power); break;
             default:
                 return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { });
         }

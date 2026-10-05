@@ -25,25 +25,27 @@ DiDoAiState a2(A2);
 DiDoAiState a3(A3);
 DiDoAiState a4(A4);
 DiDoAiState a5(A5);
-#define FOREACH_PIN(...) \
-    { DiDoState& pin = d2; __VA_ARGS__ } \
-    { DiDoAoState& pin = d3; __VA_ARGS__ } \
-    { DiDoState& pin = d4; __VA_ARGS__ } \
-    { DiDoAoState& pin = d5; __VA_ARGS__ } \
-    { DiDoAoState& pin = d6; __VA_ARGS__ } \
-    { DiDoState& pin = d7; __VA_ARGS__ } \
-    { DiDoState& pin = d8; __VA_ARGS__ } \
-    { DiDoAoState& pin = d9; __VA_ARGS__ } \
-    { DiDoAoState& pin = d10; __VA_ARGS__ } \
-    { DiDoAoState& pin = d11; __VA_ARGS__ } \
-    { DiDoState& pin = d12; __VA_ARGS__ } \
-    { DiDoState& pin = d13; __VA_ARGS__ } \
-    { DiDoAiState& pin = a0; __VA_ARGS__ } \
-    { DiDoAiState& pin = a1; __VA_ARGS__ } \
-    { DiDoAiState& pin = a2; __VA_ARGS__ } \
-    { DiDoAiState& pin = a3; __VA_ARGS__ } \
-    { DiDoAiState& pin = a4; __VA_ARGS__ } \
-    { DiDoAiState& pin = a5; __VA_ARGS__ }
+#define FOREACH_PIN(pin, id, ...) \
+    { \
+        { [[maybe_unused]] DiDoState& pin = d2; [[maybe_unused]] uint8_t id = 0; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d3; [[maybe_unused]] uint8_t id = 1; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoState& pin = d4; [[maybe_unused]] uint8_t id = 2; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d5; [[maybe_unused]] uint8_t id = 3; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d6; [[maybe_unused]] uint8_t id = 4; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoState& pin = d7; [[maybe_unused]] uint8_t id = 5; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoState& pin = d8; [[maybe_unused]] uint8_t id = 6; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d9; [[maybe_unused]] uint8_t id = 7; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d10; [[maybe_unused]] uint8_t id = 8; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAoState& pin = d11; [[maybe_unused]] uint8_t id = 9; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoState& pin = d12; [[maybe_unused]] uint8_t id = 10; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoState& pin = d13; [[maybe_unused]] uint8_t id = 11; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a0; [[maybe_unused]] uint8_t id = 12; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a1; [[maybe_unused]] uint8_t id = 13; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a2; [[maybe_unused]] uint8_t id = 14; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a3; [[maybe_unused]] uint8_t id = 15; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a4; [[maybe_unused]] uint8_t id = 16; __VA_ARGS__ } \
+        { [[maybe_unused]] DiDoAiState& pin = a5; [[maybe_unused]] uint8_t id = 17; __VA_ARGS__ } \
+    }
 #else
 #error "Unknown board type"
 #endif
@@ -54,7 +56,10 @@ DiDoAiState a5(A5);
 void setup()
 {
     Serial.begin(9600);
-    FOREACH_PIN(pin.begin();)
+    FOREACH_PIN(pin, i,
+    {
+        pin.begin();
+    })
 }
 
 struct NewBegining { };
@@ -135,7 +140,7 @@ void loop()
     EscapedReader reader;
     EscapedWriter writer;
 
-    FOREACH_PIN(
+    FOREACH_PIN(pin, i,
     {
         Result<uint16_t, void> poll = pin.pollListen();
         if (poll.isOk())
@@ -143,7 +148,7 @@ void loop()
             writer.start();
             outgoing::serialize(
                 writer,
-                outgoing::Packet(outgoing::PinListen { *poll.ok() }));
+                outgoing::Packet(outgoing::PinListen { i, *poll.ok() }));
         }
     })
 
@@ -180,91 +185,95 @@ void loop()
             }
             else if (incoming.isGetPinPower())
             {
-                uint8_t i = incoming.getPinPower()->pin;
+                uint8_t id = incoming.getPinPower()->pin;
 
-                FOREACH_PIN(
+                FOREACH_PIN(pin, i,
                 {
-                    if (i == 0)
+                    if (id == i)
                     {
                         writer.start();
                         outgoing::serialize(
                             writer,
-                            outgoing::Packet(outgoing::GetPinPowerResponse { pin.getPower() }));
+                            outgoing::Packet(outgoing::GetPinPowerResponse { id, pin.getPower() }));
 
                         return;
                     }
-
-                    i -= 1;
                 })
 
                 writer.start();
-                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { }));
+                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { id }));
             }
             else if (incoming.isGetPinMode())
             {
-                uint8_t i = incoming.getPinMode()->pin;
+                uint8_t id = incoming.getPinMode()->pin;
 
-                FOREACH_PIN(
+                FOREACH_PIN(pin, i,
                 {
-                    if (i == 0)
+                    if (id == i)
                     {
                         writer.start();
                         outgoing::serialize(
                             writer,
-                            outgoing::Packet(outgoing::GetPinModeResponse { pin.getMode() }));
+                            outgoing::Packet(outgoing::GetPinModeResponse { id, pin.getMode() }));
 
                         return;
                     }
-
-                    i -= 1;
                 })
 
                 writer.start();
-                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { }));
+                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { id }));
             }
             else if (incoming.isSetPinPower())
             {
-                uint8_t i = incoming.setPinPower()->pin;
+                uint8_t id = incoming.setPinPower()->pin;
                 uint8_t power = incoming.setPinPower()->power;
 
-                FOREACH_PIN(
+                FOREACH_PIN(pin, i,
                 {
-                    if (i == 0)
+                    if (id == i)
                     {
-                        const outgoing::Packet& response = pin.setPower(power)
-                            .errOr(outgoing::Packet(outgoing::SetPinPowerResponse { }));
-
-                        writer.start();
-                        outgoing::serialize(writer, response);
+                        Result<void, outgoing::Packet> result = pin.setPower(power);
+                        if (result.isErr())
+                        {
+                            writer.start();
+                            outgoing::serialize(writer, *result.err());
+                        }
+                        else
+                        {
+                            writer.start();
+                            outgoing::serialize(writer, outgoing::Packet(outgoing::SetPinPowerResponse { id, power }));
+                        }
 
                         return;
                     }
-
-                    i -= 1;
                 })
 
                 writer.start();
-                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { }));
+                outgoing::serialize(writer, outgoing::Packet(outgoing::InvalidPinId { id }));
             }
             else if (incoming.isSetPinMode())
             {
-                uint8_t i = incoming.setPinMode()->pin;
+                uint8_t id = incoming.setPinMode()->pin;
                 PinMode mode = incoming.setPinMode()->mode;
 
-                FOREACH_PIN(
+                FOREACH_PIN(pin, i,
                 {
-                    if (i == 0)
+                    if (id == i)
                     {
-                        const outgoing::Packet& response = pin.setMode(mode)
-                            .errOr(outgoing::Packet(outgoing::SetPinModeResponse { }));
-
-                        writer.start();
-                        outgoing::serialize(writer, response);
+                        Result<void, outgoing::Packet> result = pin.setMode(mode);
+                        if (result.isErr())
+                        {
+                            writer.start();
+                            outgoing::serialize(writer, *result.err());
+                        }
+                        else
+                        {
+                            writer.start();
+                            outgoing::serialize(writer, outgoing::Packet(outgoing::SetPinModeResponse { id, mode }));
+                        }
 
                         return;
                     }
-
-                    i -= 1;
                 })
 
                 writer.start();

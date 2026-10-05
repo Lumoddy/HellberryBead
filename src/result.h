@@ -122,26 +122,6 @@ public:
     {
         return tag ? &data.err : nullptr;
     }
-
-    [[nodiscard]] T& okOr(T& other)
-    {
-        return tag ? other : data.ok;
-    }
-
-    [[nodiscard]] const T& okOr(const T& other) const
-    {
-        return tag ? other : data.ok;
-    }
-
-    [[nodiscard]] E& errOr(E& other)
-    {
-        return tag ? data.err : other;
-    }
-
-    [[nodiscard]] const E& errOr(const E& other) const
-    {
-        return tag ? data.err : other;
-    }
 };
 
 template<>
@@ -297,16 +277,6 @@ public:
         return tag;
     }
 
-    [[nodiscard]] T& okOr(T& other)
-    {
-        return tag ? other : data.ok;
-    }
-
-    [[nodiscard]] const T& okOr(const T& other) const
-    {
-        return tag ? other : data.ok;
-    }
-
     [[nodiscard]] constexpr T& operator*() const
     {
         return data.ok;
@@ -417,16 +387,6 @@ public:
     [[nodiscard]] constexpr const E* err() const
     {
         return tag ? &data.err : nullptr;
-    }
-
-    [[nodiscard]] E& errOr(E& other)
-    {
-        return tag ? data.err : other;
-    }
-
-    [[nodiscard]] const E& errOr(const E& other) const
-    {
-        return tag ? data.err : other;
     }
 };
 

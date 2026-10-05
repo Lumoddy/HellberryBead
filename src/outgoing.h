@@ -36,6 +36,7 @@ namespace outgoing
 
     struct GetPinPowerResponse
     {
+        uint8_t pin;
         uint16_t power;
 
         [[nodiscard]] static constexpr PacketType type() { return PacketType::GetPinPowerResponse; }
@@ -43,6 +44,7 @@ namespace outgoing
 
     struct GetPinModeResponse
     {
+        uint8_t pin;
         PinMode mode;
 
         [[nodiscard]] static constexpr PacketType type() { return PacketType::GetPinModeResponse; }
@@ -50,16 +52,23 @@ namespace outgoing
 
     struct SetPinPowerResponse
     {
+        uint8_t pin;
+        uint16_t power;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::SetPinPowerResponse; }
     };
 
     struct SetPinModeResponse
     {
+        uint8_t pin;
+        PinMode mode;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::SetPinModeResponse; }
     };
 
     struct PinListen
     {
+        uint8_t pin;
         uint16_t power;
 
         [[nodiscard]] static constexpr PacketType type() { return PacketType::PinListen; }
@@ -67,31 +76,45 @@ namespace outgoing
 
     struct InvalidPinMode
     {
+        uint8_t byte;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidPinMode; }
     };
 
     struct InvalidPinId
     {
+        uint8_t pin;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidPinId; }
     };
 
     struct InvalidPacketId
     {
+        uint8_t byte;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidPacketId; }
     };
 
     struct InvalidWriteToInput
     {
+        uint8_t pin;
+        uint16_t power;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidWriteToInput; }
     };
 
     struct InvalidUnsupportedMode
     {
+        uint8_t pin;
+        PinMode mode;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidUnsupportedMode; }
     };
 
     struct InvalidEscape
     {
+        uint8_t byte;
+
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidEscape; }
     };
 
@@ -409,6 +432,9 @@ namespace outgoing
         const int ANALOG_OUTPUT = 1 << 3;
 
         #ifdef BOARD_ARDUINO_UNO
+        // version: short
+        serialize(sink, (uint16_t)1);
+        // name: string
         serialize(sink, (uint16_t)11);
         sink('a');
         sink('r');
@@ -421,70 +447,125 @@ namespace outgoing
         sink('u');
         sink('n');
         sink('o');
+        // pins: Pin[]
         serialize(sink, (uint16_t)18);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('2');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('3');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('4');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('5');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('6');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('7');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('8');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)1);
         sink('9');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('1');
         sink('0');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('1');
         sink('1');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('1');
         sink('2');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('1');
         sink('3');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('0');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('1');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('2');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('3');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('4');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
+        // - Pin
+        //   name: string
         serialize(sink, (uint16_t)2);
         sink('A');
         sink('5');
+        //   flags: byte
         sink(DIGITAL_INPUT | DIGITAL_OUTPUT | ANALOG_INPUT);
         #else
         #error "Unknown board type"
@@ -494,41 +575,75 @@ namespace outgoing
     template<typename F>
     void serialize(F& sink, const GetPinModeResponse& value)
     {
+        serialize(sink, value.pin);
         serialize(sink, value.mode);
     }
 
     template<typename F>
     void serialize(F& sink, const GetPinPowerResponse& value)
     {
+        serialize(sink, value.pin);
         serialize(sink, value.power);
     }
 
     template<typename F>
-    void serialize(F& sink, const SetPinPowerResponse& value) { }
+    void serialize(F& sink, const SetPinPowerResponse& value)
+    {
+        serialize(sink, value.pin);
+        serialize(sink, value.power);
+    }
 
     template<typename F>
-    void serialize(F& sink, const SetPinModeResponse& value) { }
+    void serialize(F& sink, const SetPinModeResponse& value)
+    {
+        serialize(sink, value.pin);
+        serialize(sink, value.mode);
+    }
 
     template<typename F>
-    void serialize(F& sink, const PinListen& value) { }
+    void serialize(F& sink, const PinListen& value)
+    {
+        serialize(sink, value.pin);
+        serialize(sink, value.power);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidPinMode& value) { }
+    void serialize(F& sink, const InvalidPinMode& value)
+    {
+        serialize(sink, value.byte);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidPinId& value) { }
+    void serialize(F& sink, const InvalidPinId& value)
+    {
+        serialize(sink, value.pin);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidPacketId& value) { }
+    void serialize(F& sink, const InvalidPacketId& value)
+    {
+        serialize(sink, value.byte);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidWriteToInput& value) { }
+    void serialize(F& sink, const InvalidWriteToInput& value)
+    {
+        serialize(sink, value.pin);
+        serialize(sink, value.power);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidUnsupportedMode& value) { }
+    void serialize(F& sink, const InvalidUnsupportedMode& value)
+    {
+        serialize(sink, value.pin);
+        serialize(sink, value.mode);
+    }
 
     template<typename F>
-    void serialize(F& sink, const InvalidEscape& value) { }
+    void serialize(F& sink, const InvalidEscape& value)
+    {
+        serialize(sink, value.byte);
+    }
 
     template<typename F>
     void serialize(F& sink, const Packet& value)

@@ -53,7 +53,7 @@ namespace outgoing
     struct SetPinPowerResponse
     {
         uint8_t pin;
-        uint16_t power;
+        uint8_t power;
 
         [[nodiscard]] static constexpr PacketType type() { return PacketType::SetPinPowerResponse; }
     };
@@ -98,7 +98,7 @@ namespace outgoing
     struct InvalidWriteToInput
     {
         uint8_t pin;
-        uint16_t power;
+        uint8_t power;
 
         [[nodiscard]] static constexpr PacketType type() { return PacketType::InvalidWriteToInput; }
     };

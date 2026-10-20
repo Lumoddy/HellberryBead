@@ -53,15 +53,6 @@ DiDoAiState a5(A5);
 #define PACKET_CONTROL 16
 #define PACKET_START 2
 
-void setup()
-{
-    Serial.begin(9600);
-    FOREACH_PIN(pin, i,
-    {
-        pin.begin();
-    })
-}
-
 struct NewBegining { };
 
 struct EscapedReaderError
@@ -135,10 +126,34 @@ struct EscapedWriter
     }
 };
 
+EscapedReader reader;
+EscapedWriter writer;
+bool sent_first_pong = false;
+
+void setup()
+{
+    Serial.begin(9600);
+    FOREACH_PIN(pin, i,
+    {
+        pin.begin();
+    })
+}
+
 void loop()
 {
-    EscapedReader reader;
-    EscapedWriter writer;
+    if (!Serial)
+    {
+        sent_first_pong = false;
+
+        return;
+    }
+    else if (!sent_first_pong)
+    {
+        writer.start();
+        outgoing::serialize(writer, outgoing::Packet(outgoing::Pong { }));
+
+        sent_first_pong = true;
+    }
 
     FOREACH_PIN(pin, i,
     {

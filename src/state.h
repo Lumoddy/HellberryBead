@@ -1,6 +1,9 @@
 #ifndef state_h
 #define state_h
 
+#define ANALOG_READ_MAX 1023
+#define ANALOG_WRITE_MAX 255
+
 /// Digital-In, Digital-Out
 struct DiDoState
 {
@@ -22,9 +25,9 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalInput: return digitalRead(pin);
-            case PinMode::DigitalListen: return digitalRead(pin);
-            case PinMode::DigitalOutput: return digitalRead(pin);
+            case PinMode::DigitalInput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalListen: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalOutput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
         }
 
         return 0;
@@ -86,7 +89,7 @@ public:
                 mode = PinMode::DigitalOutput;
                 break;
             default:
-                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { });
+                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { pin, newMode });
         }
 
         return Result<void, outgoing::Packet>::makeOk();
@@ -113,9 +116,9 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalInput: return digitalRead(pin);
-            case PinMode::DigitalListen: return digitalRead(pin);
-            case PinMode::DigitalOutput: return digitalRead(pin);
+            case PinMode::DigitalInput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalListen: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalOutput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
             case PinMode::AnalogInput: return analogRead(pin);
         }
 
@@ -146,7 +149,7 @@ public:
         {
             case PinMode::DigitalOutput: digitalWrite(pin, power); break;
             default:
-                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { });
+                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { pin, power });
         }
 
         return Result<void, outgoing::Packet>();
@@ -173,7 +176,7 @@ public:
                 mode = PinMode::AnalogInput;
                 break;
             default:
-                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { });
+                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { pin, newMode });
         }
 
         return Result<void, outgoing::Packet>::makeOk();
@@ -200,9 +203,9 @@ public:
     {
         switch (mode)
         {
-            case PinMode::DigitalInput: return digitalRead(pin);
-            case PinMode::DigitalListen: return digitalRead(pin);
-            case PinMode::DigitalOutput: return digitalRead(pin);
+            case PinMode::DigitalInput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalListen: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
+            case PinMode::DigitalOutput: return ((bool)digitalRead(pin)) * ANALOG_READ_MAX;
             case PinMode::AnalogOutput: return analogRead(pin);
         }
 
@@ -234,7 +237,7 @@ public:
             case PinMode::DigitalOutput: digitalWrite(pin, power); break;
             case PinMode::AnalogOutput: analogWrite(pin, power); break;
             default:
-                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { });
+                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidWriteToInput { pin, power });
         }
 
         return Result<void, outgoing::Packet>();
@@ -261,7 +264,7 @@ public:
                 mode = PinMode::AnalogOutput;
                 break;
             default:
-                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { });
+                return Result<void, outgoing::Packet>::makeErr(outgoing::InvalidUnsupportedMode { pin, newMode });
         }
 
         return Result<void, outgoing::Packet>::makeOk();

@@ -2,11 +2,11 @@ use core::ops;
 
 use arduino_hal::{adc, port};
 
-use super::{DiDoAiPin, DiDoPin, Interactable, LockedPin, PinId};
+use super::{DiDoAiPin, DiDoPin, Interactable, ReservedPin, PinId};
 
 pub struct Collection {
-    pub d0: LockedPin<port::D0>,
-    pub d1: LockedPin<port::D1>,
+    pub d0: ReservedPin<port::D0>,
+    pub d1: ReservedPin<port::D1>,
     pub d2: DiDoPin<port::D2>,
     pub d3: DiDoPin<port::D3>,
     pub d4: DiDoPin<port::D4>,
@@ -31,8 +31,8 @@ macro_rules! collect_pins {
     ($pins:ident) => {
         $crate::pin::Collection
         {
-            d0: $crate::pin::LockedPin::new(),
-            d1: $crate::pin::LockedPin::new(),
+            d0: $crate::pin::ReservedPin::new(),
+            d1: $crate::pin::ReservedPin::new(),
             d2: $crate::pin::DiDoPin::from($pins.d2),
             d3: $crate::pin::DiDoPin::from($pins.d3),
             d4: $crate::pin::DiDoPin::from($pins.d4),

@@ -25,6 +25,8 @@ pub struct InteractableCtx<'a, ADC> {
 pub trait Interactable<ADC> {
     fn id(&self) -> PinId;
 
+    fn flags(&self) -> PinFlags;
+
     fn power(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()>;
 
     fn poll_change(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Option<u16>;
@@ -39,6 +41,8 @@ pub trait Interactable<ADC> {
 impl<T: Interactable<ADC> + ?Sized, ADC> Interactable<ADC> for &mut T {
     fn id(&self) -> PinId { T::id(self) }
 
+    fn flags(&self) -> PinFlags { T::flags(self) }
+
     fn power(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> { T::power(self, ctx) }
 
     fn poll_change(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Option<u16> { T::poll_change(self, ctx) }
@@ -50,19 +54,23 @@ impl<T: Interactable<ADC> + ?Sized, ADC> Interactable<ADC> for &mut T {
     fn set_mode(&mut self, mode: PinMode, ctx: &mut InteractableCtx<'_, ADC>) -> Result<(), ()> { T::set_mode(self, mode, ctx) }
 }
 
-pub struct LockedPin<P> {
+pub struct ReservedPin<P> {
     _marker: PhantomData<fn(&P)>,
 }
 
-impl<P> LockedPin<P> {
+impl<P> ReservedPin<P> {
     pub const fn new() -> Self {
         Self { _marker: PhantomData }
     }
 }
 
-impl<P: ConstPinId, ADC> Interactable<ADC> for LockedPin<P> {
+impl<P: ConstPinId, ADC> Interactable<ADC> for ReservedPin<P> {
     fn id(&self) -> PinId {
         P::ID
+    }
+
+    fn flags(&self) -> PinFlags {
+        PinFlags::RESERVED
     }
 
     fn power(&mut self, _: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> {
@@ -114,6 +122,10 @@ impl<P: ConstPinId + port::PinOps, ADC> Interactable<ADC> for DiDoPin<P>
 {
     fn id(&self) -> PinId {
         P::ID
+    }
+
+    fn flags(&self) -> PinFlags {
+        PinFlags::DIGITAL_INPUT | PinFlags::DIGITAL_OUTPUT
     }
 
     fn power(&mut self, _: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> {
@@ -286,6 +298,10 @@ where
 {
     fn id(&self) -> PinId {
         P::ID
+    }
+
+    fn flags(&self) -> PinFlags {
+        PinFlags::DIGITAL_INPUT | PinFlags::DIGITAL_OUTPUT | PinFlags::ANALOG_INPUT
     }
 
     fn power(&mut self, ctx: &mut InteractableCtx<'_, adc::Adc>) -> Result<u16, ()> {

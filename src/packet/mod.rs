@@ -1,5 +1,10 @@
+use core::convert::Infallible;
+
 use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
 use ufmt::{Formatter, uDisplay, uWrite};
+
+mod literal;
+use literal::*;
 
 pub mod incoming;
 pub mod outgoing;
@@ -206,9 +211,9 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Delimited<T> {
         -> Result<Result<Self, Self::Error>, R::Error> {
         Ok(match T::deserialize(reader, peek)? {
             Err(x) => Err(x),
-            Ok(x) => match incoming::LiteralSemiColon::deserialize(reader, peek)? {
+            Ok(x) => match LiteralSemiColon::deserialize(reader, peek)? {
                 Err(()) => Err(T::Error::default()),
-                Ok(incoming::LiteralSemiColon) => {
+                Ok(LiteralSemiColon) => {
                     Ok(Self(x))
                 },
             },
@@ -220,5 +225,20 @@ impl<T: PacketSerialize> PacketSerialize for Delimited<T> {
     fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
         self.0.serialize(writer)?;
         nb::block!(writer.write(b';'))
+    }
+}
+
+impl PacketDeserialize for () {
+    type Error = Infallible;
+
+    fn deserialize<R: Read<u8>>(_: &mut R, _: &mut Option<u8>)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Ok(Ok(()))
+    }
+}
+
+impl PacketSerialize for () {
+    fn serialize<W: Write<u8>>(&self, _: &mut W) -> Result<(), W::Error> {
+        Ok(())
     }
 }

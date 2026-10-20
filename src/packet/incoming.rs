@@ -1,115 +1,44 @@
 use arduino_hal::prelude::_embedded_hal_serial_Read as Read;
 
+use crate::packet::literal::*;
 use crate::pin::{PinId, PinMode};
 
 use super::PacketDeserialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Packet {
+    /// Encoded as `"ping"`.
     Ping,
+    /// Encoded as `"pins.<pin>.getPower()"`.
     GetPinPower { pin: PinId },
+    /// Encoded as `"pins.<pin>.getMode()"`.
     GetPinMode { pin: PinId },
+    /// Encoded as `"pins.<pin>.flags"`.
+    PinFlags { pin: PinId },
+    /// Encoded as `"pins.<pin>.setPinPower(<power>)"`.
     SetPinPower { pin: PinId, power: u16 },
+    /// Encoded as `"pins.<pin>.setPinMode(<mode>)"`.
     SetPinMode { pin: PinId, mode: PinMode },
 }
 
-impl PacketDeserialize for Packet {
-    type Error = ();
-
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
-        -> Result<Result<Self, Self::Error>, R::Error> {
-        Ok(match LiteralPingOrPins::deserialize(reader, peek)? {
-            Err(()) => Err(()),
-            Ok(LiteralPingOrPins::Ping) => {
-                Ok(Packet::Ping)
-            },
-            Ok(LiteralPingOrPins::Pins) => match PinId::deserialize(reader, peek)? {
-                Err(()) => Err(()),
-                Ok(pin) => match LiteralPinFunctionName::deserialize(reader, peek)? {
-                    Err(()) => Err(()),
-                    Ok(LiteralPinFunctionName::GetPower) => match LiteralOpen::deserialize(reader, peek)? {
-                        Err(()) => Err(()),
-                        Ok(LiteralOpen) => match LiteralClose::deserialize(reader, peek)? {
-                            Err(()) => Err(()),
-                            Ok(LiteralClose) => {
-                                Ok(Self::GetPinPower { pin })
-                            },
-                        },
-                    },
-                    Ok(LiteralPinFunctionName::GetMode) => match LiteralOpen::deserialize(reader, peek)? {
-                        Err(()) => Err(()),
-                        Ok(LiteralOpen) => match LiteralClose::deserialize(reader, peek)? {
-                            Err(()) => Err(()),
-                            Ok(LiteralClose) => {
-                                Ok(Self::GetPinPower { pin })
-                            },
-                        },
-                    },
-                    Ok(LiteralPinFunctionName::SetPower) => match LiteralOpen::deserialize(reader, peek)? {
-                        Err(()) => Err(()),
-                        Ok(LiteralOpen) => match u16::deserialize(reader, peek)? {
-                            Err(()) => Err(()),
-                            Ok(power) => match LiteralClose::deserialize(reader, peek)? {
-                                Err(()) => Err(()),
-                                Ok(LiteralClose) => {
-                                    Ok(Self::SetPinPower { pin, power })
-                                },
-                            },
-                        },
-                    },
-                    Ok(LiteralPinFunctionName::SetMode) => match LiteralOpen::deserialize(reader, peek)? {
-                        Err(()) => Err(()),
-                        Ok(LiteralOpen) => match PinMode::deserialize(reader, peek)? {
-                            Err(()) => Err(()),
-                            Ok(mode) => match LiteralClose::deserialize(reader, peek)? {
-                                Err(()) => Err(()),
-                                Ok(LiteralClose) => {
-                                    Ok(Self::SetPinMode { pin, mode })
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        })
-    }
-}
-
-macro_rules! impl_literal {
+macro_rules! impl_construct {
     (
-        @ $reader:ident, $peek:ident, read(),
+        @ $reader:ident, $peek:ident,
         { $($pat:pat => $($val:tt)::+ $(($($round:tt)*))? $({ $($curly:tt)* })?),*$(,)? }
     ) => {
-        {
-            let byte = nb::block!($reader.read())?;
-            impl_literal!
-            {
-                @ $reader, $peek, byte,
-                { $($pat => $($val)::+ $(($($round)*))? $({ $($curly)* })?,)* }
-            }
-        }
-    };
-    (
-        @ $reader:ident, $peek:ident, $byte:ident,
-        { $($pat:pat => $($val:tt)::+ $(($($round:tt)*))? $({ $($curly:tt)* })?),*$(,)? }
-    ) => {
-        match $byte {
+        match PacketDeserialize::deserialize($reader, $peek) {
+            Err(x) => Err(x),
             $(
-                $pat => impl_literal!
+                Ok($pat) => impl_construct!
                 {
-                    @ $reader, $peek, read(),
+                    @ $reader, $peek,
                     $($val)::+ $(($($round)*))? $({ $($curly)* })?
                 },
             )*
-            #[allow(unreachable_patterns)]
-            byte => {
-                *$peek = Some(byte);
-                Err(())
-            },
         }
     };
     (
-        @ $reader:ident, $peek:ident, $byte:ident $(())?,
+        @ $reader:ident, $peek:ident,
         $($tt:tt)*
     ) => {
         Ok($($tt)*)
@@ -122,125 +51,60 @@ macro_rules! impl_literal {
 
             fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
                 -> Result<Result<Self, Self::Error>, R::Error> {
-                let mut first = match peek.take() {
-                    Some(x) => x,
-                    None => nb::block!(reader.read())?,
-                };
-
-                while let b' ' | b'\r' | b'\n' = first {
-                    first = nb::block!(reader.read())?;
-                }
-
-                Ok(impl_literal! { @ reader, peek, first, { $($tt)* } })
+                impl_construct! { @ reader, peek, { $($tt)* } }
             }
         }
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralDot;
-
-impl_literal! {
-    for LiteralDot {
-        b'.' => Self,
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralOpen;
-
-impl_literal! {
-    for LiteralOpen {
-        b'(' => Self,
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralClose;
-
-impl_literal! {
-    for LiteralClose {
-        b')' => Self,
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralSemiColon;
-
-impl_literal! {
-    for LiteralSemiColon {
-        b';' => Self,
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiteralPingOrPins {
-    Ping,
-    Pins,
-}
-
-impl_literal! {
-    for LiteralPingOrPins {
-        b'P' | b'p' => {
-            b'i' => {
-                b'n' => {
-                    b'g' => Self::Ping,
-                    b's' => Self::Pins,
-                },
-            },
-        },
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiteralPinFunctionName {
-    GetPower,
-    GetMode,
-    SetPower,
-    SetMode,
-}
-
-impl_literal! {
-    for LiteralPinFunctionName {
-        b'G' | b'g' => {
-            b'e' => {
-                b't' => {
-                    b'P' | b'p' => {
-                        b'o' => {
-                            b'w' => {
-                                b'e' => {
-                                    b'r' => Self::GetPower,
-                                },
-                            },
-                        },
+impl_construct! {
+    for Packet {
+        Err(()) => Err(()),
+        Ok(LiteralPingOrPins::Ping) => Ok(Packet::Ping),
+        Ok(LiteralPingOrPins::Pins) => {
+            Err(()) => Err(()),
+            Ok(pin) => {
+                Err(()) => Err(()),
+                Ok(LiteralPinFunctionName::GetPower) => {
+                    Err(()) => Err(()),
+                    Ok(LiteralOpen) => {
+                        Err(()) => Err(()),
+                        Ok(LiteralClose) => Ok(Self::GetPinPower { pin }),
                     },
-                    b'M' | b'm' => {
-                        b'o' => {
-                            b'd' => {
-                                b'e' => Self::GetMode,
-                            },
+                },
+                Ok(LiteralPinFunctionName::GetMode) => {
+                    Err(()) => Err(()),
+                    Ok(LiteralOpen) => {
+                        Err(()) => Err(()),
+                        Ok(LiteralClose) => Ok(Self::GetPinPower { pin }),
+                    },
+                },
+                Ok(LiteralPinFunctionName::Flags) => {
+                    Ok(Self::PinFlags { pin })
+                },
+                Ok(LiteralPinFunctionName::SetPower) => {
+                    Err(()) => Err(()),
+                    Ok(LiteralOpen) => {
+                        Err(()) => Err(()),
+                        Ok(power) => {
+                            Err(()) => Err(()),
+                            Ok(Some(LiteralComma) | None) => {
+                                Err(()) => Err(()),
+                                Ok(LiteralClose) => Ok(Self::SetPinPower { pin, power }),
+                            }
                         },
                     },
                 },
-            },
-        },
-        b'S' | b's' => {
-            b'e' => {
-                b't' => {
-                    b'P' | b'p' => {
-                        b'o' => {
-                            b'w' => {
-                                b'e' => {
-                                    b'r' => Self::SetPower,
-                                },
-                            },
-                        },
-                    },
-                    b'M' | b'm' => {
-                        b'o' => {
-                            b'd' => {
-                                b'e' => Self::SetMode,
-                            },
+                Ok(LiteralPinFunctionName::SetMode) => {
+                    Err(()) => Err(()),
+                    Ok(LiteralOpen) => {
+                        Err(()) => Err(()),
+                        Ok(mode) => {
+                            Err(()) => Err(()),
+                            Ok(Some(LiteralComma) | None) => {
+                                Err(()) => Err(()),
+                                Ok(LiteralClose) => Ok(Self::SetPinMode { pin, mode }),
+                            }
                         },
                     },
                 },

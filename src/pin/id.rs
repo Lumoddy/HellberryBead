@@ -2,6 +2,7 @@ use arduino_hal::hal::port;
 use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
 
 use crate::packet;
+use crate::packet::Char;
 
 pub(super) trait ConstPinId {
     const ID: PinId;
@@ -55,43 +56,36 @@ impl_id! {
 }
 
 impl packet::PacketSerialize for PinId {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
-        macro_rules! write {
-            ($($byte:expr),*$(,)?) => {
-                { $( nb::block!(writer.write($byte))?; )* }
-            };
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        match self {
+            Self::A0 => <Char!['a', '0']>::new().serialize(writer, whitespace),
+            Self::A1 => <Char!['a', '1']>::new().serialize(writer, whitespace),
+            Self::A2 => <Char!['a', '2']>::new().serialize(writer, whitespace),
+            Self::A3 => <Char!['a', '3']>::new().serialize(writer, whitespace),
+            Self::A4 => <Char!['a', '4']>::new().serialize(writer, whitespace),
+            Self::A5 => <Char!['a', '5']>::new().serialize(writer, whitespace),
+            Self::D0 => <Char!['d', '0']>::new().serialize(writer, whitespace),
+            Self::D1 => <Char!['d', '1']>::new().serialize(writer, whitespace),
+            Self::D2 => <Char!['d', '2']>::new().serialize(writer, whitespace),
+            Self::D3 => <Char!['d', '3']>::new().serialize(writer, whitespace),
+            Self::D4 => <Char!['d', '4']>::new().serialize(writer, whitespace),
+            Self::D5 => <Char!['d', '5']>::new().serialize(writer, whitespace),
+            Self::D6 => <Char!['d', '6']>::new().serialize(writer, whitespace),
+            Self::D7 => <Char!['d', '7']>::new().serialize(writer, whitespace),
+            Self::D8 => <Char!['d', '8']>::new().serialize(writer, whitespace),
+            Self::D9 => <Char!['d', '9']>::new().serialize(writer, whitespace),
+            Self::D10 => <Char!['d', '1', '0']>::new().serialize(writer, whitespace),
+            Self::D11 => <Char!['d', '1', '1']>::new().serialize(writer, whitespace),
+            Self::D12 => <Char!['d', '1', '2']>::new().serialize(writer, whitespace),
+            Self::D13 => <Char!['d', '1', '3']>::new().serialize(writer, whitespace),
         }
-
-        match *self {
-            Self::A0 => write!(b'A', b'0'),
-            Self::A1 => write!(b'A', b'1'),
-            Self::A2 => write!(b'A', b'2'),
-            Self::A3 => write!(b'A', b'3'),
-            Self::A4 => write!(b'A', b'4'),
-            Self::A5 => write!(b'A', b'5'),
-            Self::D0 => write!(b'D', b'0'),
-            Self::D1 => write!(b'D', b'1'),
-            Self::D2 => write!(b'D', b'2'),
-            Self::D3 => write!(b'D', b'3'),
-            Self::D4 => write!(b'D', b'4'),
-            Self::D5 => write!(b'D', b'5'),
-            Self::D6 => write!(b'D', b'6'),
-            Self::D7 => write!(b'D', b'7'),
-            Self::D8 => write!(b'D', b'8'),
-            Self::D9 => write!(b'D', b'9'),
-            Self::D10 => write!(b'D', b'1', b'0'),
-            Self::D11 => write!(b'D', b'1', b'1'),
-            Self::D12 => write!(b'D', b'1', b'2'),
-            Self::D13 => write!(b'D', b'1', b'3'),
-        }
-        Ok(())
     }
 }
 
 impl packet::PacketDeserialize for PinId {
     type Error = ();
 
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, _: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         let mut first = match peek.take() {
             Some(x) => x,
@@ -118,7 +112,7 @@ impl packet::PacketDeserialize for PinId {
         }
 
         Ok(match first {
-            b'A' | b'a' => match nb::block!(reader.read())? {
+            b'a' => match nb::block!(reader.read())? {
                 b'0' => complete!(PinId::A0),
                 b'1' => complete!(PinId::A1),
                 b'2' => complete!(PinId::A2),
@@ -130,7 +124,7 @@ impl packet::PacketDeserialize for PinId {
                     Ok(PinId::A0)
                 },
             },
-            b'D' | b'd' => match nb::block!(reader.read())? {
+            b'd' => match nb::block!(reader.read())? {
                 b'0' => complete!(PinId::D0),
                 b'1' => match nb::block!(reader.read())? {
                     b'0' => complete!(PinId::D10),
@@ -139,7 +133,7 @@ impl packet::PacketDeserialize for PinId {
                     b'3' => complete!(PinId::D13),
                     byte => {
                         *peek = Some(byte);
-                        Ok(PinId::D0)
+                        Ok(PinId::D1)
                     },
                 },
                 b'2' => complete!(PinId::D2),
@@ -155,25 +149,6 @@ impl packet::PacketDeserialize for PinId {
                     Err(())
                 },
             },
-            b'0' => complete!(PinId::D0),
-            b'1' => match nb::block!(reader.read())? {
-                b'0' => complete!(PinId::D10),
-                b'1' => complete!(PinId::D11),
-                b'2' => complete!(PinId::D12),
-                b'3' => complete!(PinId::D13),
-                byte => {
-                    *peek = Some(byte);
-                    Ok(PinId::D0)
-                },
-            },
-            b'2' => complete!(PinId::D2),
-            b'3' => complete!(PinId::D3),
-            b'4' => complete!(PinId::D4),
-            b'5' => complete!(PinId::D5),
-            b'6' => complete!(PinId::D6),
-            b'7' => complete!(PinId::D7),
-            b'8' => complete!(PinId::D8),
-            b'9' => complete!(PinId::D9),
             byte => {
                 *peek = Some(byte);
                 Err(())

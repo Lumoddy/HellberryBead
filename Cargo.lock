@@ -290,6 +290,7 @@ dependencies = [
  "bitflags",
  "embedded-hal 1.0.0",
  "nb 1.1.0",
+ "nodyn",
  "ufmt",
 ]
 
@@ -460,6 +461,17 @@ name = "nb"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
+
+[[package]]
+name = "nodyn"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ba8560e182f2bb9e06596a77e999950e045f9ef3481514d527c75393485079b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
 
 [[package]]
 name = "normpath"

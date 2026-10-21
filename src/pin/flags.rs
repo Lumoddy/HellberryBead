@@ -1,9 +1,10 @@
 use arduino_hal::prelude::_embedded_hal_serial_Write as Write;
 use bitflags::bitflags;
 
-use crate::packet;
+use crate::packet::{self, Char};
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct PinFlags: u8 {
         const DIGITAL_INPUT = 1 << 0;
         const DIGITAL_OUTPUT = 1 << 1;
@@ -14,7 +15,7 @@ bitflags! {
 }
 
 impl packet::PacketSerialize for PinFlags {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
         macro_rules! write {
             ($($byte:expr),*$(,)?) => {
                 { $( nb::block!(writer.write($byte))?; )* }
@@ -27,38 +28,57 @@ impl packet::PacketSerialize for PinFlags {
             let mut is_first = true;
             if self.contains(PinFlags::DIGITAL_INPUT) {
                 if !is_first {
-                    write!(b'|');
+                    if whitespace {
+                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
+                    } else {
+                        <Char!['|']>::new().serialize(writer, whitespace)?;
+                    }
                 }
-                write!(b'D', b'i', b'g', b'i', b't', b'a', b'l', b'I', b'n', b'p', b'u', b't');
+                <Char!['d', 'i', 'g', 'i', 't', 'a', 'l', 'I', 'n', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
                 is_first = false;
             }
             if self.contains(PinFlags::DIGITAL_OUTPUT) {
                 if !is_first {
-                    write!(b'|');
+                    if whitespace {
+                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
+                    } else {
+                        <Char!['|']>::new().serialize(writer, whitespace)?;
+                    }
                 }
-                write!(b'D', b'i', b'g', b'i', b't', b'a', b'l', b'O', b'u', b't', b'p', b'u', b't');
+                <Char!['d', 'i', 'g', 'i', 't', 'a', 'l', 'O', 'u', 't', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
                 is_first = false;
             }
             if self.contains(PinFlags::ANALOG_INPUT) {
                 if !is_first {
-                    write!(b'|');
+                    if whitespace {
+                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
+                    } else {
+                        <Char!['|']>::new().serialize(writer, whitespace)?;
+                    }
                 }
-                write!(b'A', b'n', b'a', b'l', b'o', b'g', b'I', b'n', b'p', b'u', b't');
-                is_first = true;
+                <Char!['a', 'n', 'a', 'l', 'o', 'g', 'I', 'n', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
+                is_first = false;
             }
             if self.contains(PinFlags::ANALOG_OUTPUT) {
                 if !is_first {
-                    write!(b'|');
+                    if whitespace {
+                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
+                    } else {
+                        <Char!['|']>::new().serialize(writer, whitespace)?;
+                    }
                 }
-                write!(b'A', b'n', b'a', b'l', b'o', b'g', b'O', b'u', b't', b'p', b'u', b't');
+                <Char!['a', 'n', 'a', 'l', 'o', 'g', 'O', 'u', 't', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
                 is_first = false;
             }
             if self.contains(PinFlags::RESERVED) {
                 if !is_first {
-                    write!(b'|');
+                    if whitespace {
+                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
+                    } else {
+                        <Char!['|']>::new().serialize(writer, whitespace)?;
+                    }
                 }
-                write!(b'R', b'e', b's', b'e', b'r', b'v', b'e', b'd');
-                // is_first = false;
+                <Char!['r', 'e', 's', 'e', 'r', 'v', 'e', 'd']>::new().serialize(writer, whitespace)?;
             }
         }
         Ok(())

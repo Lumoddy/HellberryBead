@@ -3,8 +3,11 @@ use core::convert::Infallible;
 use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
 use ufmt::{Formatter, uDisplay, uWrite};
 
+mod char;
+pub use char::*;
+
 mod literal;
-use literal::*;
+pub use literal::*;
 
 pub mod incoming;
 pub mod outgoing;
@@ -12,54 +15,49 @@ pub mod outgoing;
 pub trait PacketDeserialize<Word = u8>: Sized {
     type Error;
 
-    fn deserialize<R: Read<Word>>(reader: &mut R, peek: &mut Option<Word>)
+    fn deserialize<R: Read<Word>>(reader: &mut R, peek: &mut Option<Word>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error>;
 }
 
 pub trait PacketSerialize<Word = u8> {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W) -> Result<(), W::Error>;
+    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
 }
 
 impl<T: PacketSerialize<Word> + ?Sized, Word> PacketSerialize<Word> for &T {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W) -> Result<(), W::Error> {
-        T::serialize(self, writer)
+    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        T::serialize(self, writer, whitespace)
     }
 }
 
 impl<T: PacketSerialize<Word> + ?Sized, Word> PacketSerialize<Word> for &mut T {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W) -> Result<(), W::Error> {
-        T::serialize(self, writer)
+    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        T::serialize(self, writer, whitespace)
     }
 }
 
 impl PacketSerialize for bool {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
-        macro_rules! write {
-            ($($byte:expr),*$(,)?) => {
-                { $( nb::block!(writer.write($byte))?; )* }
-            };
-        }
-
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
         match *self {
-            true => write!(b't', b'r', b'u', b'e'),
-            false => write!(b'f', b'a', b'l', b's', b'e'),
+            true => <Char!['t', 'r', 'u', 'e']>::new().serialize(writer, whitespace),
+            false => <Char!['f', 'a', 'l', 's', 'e']>::new().serialize(writer, whitespace),
         }
-        Ok(())
     }
 }
 
 impl PacketDeserialize for bool {
     type Error = ();
 
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         let mut first = match peek.take() {
             Some(x) => x,
             None => nb::block!(reader.read())?,
         };
 
-        while let b' ' | b'\r' | b'\n' = first {
-            first = nb::block!(reader.read())?;
+        if whitespace {
+            while let b' ' | b'\r' | b'\n' = first {
+                first = nb::block!(reader.read())?;
+            }
         }
 
         // Treat this like lexing an identifier, which means that an otherwise
@@ -118,7 +116,7 @@ macro_rules! impl_int {
     ($($ty:ident: $size:literal),*$(,)?) => {
         $(
             impl PacketSerialize for $ty {
-                fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
+                fn serialize<W: Write<u8>>(&self, writer: &mut W, _: bool) -> Result<(), W::Error> {
                     struct Writer<'a, W: Write<u8>> { writer: &'a mut W }
 
                     impl<W: Write<u8>> uWrite for Writer<'_, W> {
@@ -139,15 +137,17 @@ macro_rules! impl_int {
             impl PacketDeserialize for $ty {
                 type Error = ();
 
-                fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
+                fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
                     -> Result<Result<Self, Self::Error>, R::Error> {
                     let mut first = match peek.take() {
                         Some(x) => x,
                         None => nb::block!(reader.read())?,
                     };
 
-                    while let b' ' | b'\r' | b'\n' = first {
-                        first = nb::block!(reader.read())?;
+                    if whitespace {
+                        while let b' ' | b'\r' | b'\n' = first {
+                            first = nb::block!(reader.read())?;
+                        }
                     }
 
                     let mut buffer = [0u8; $size];
@@ -207,13 +207,13 @@ impl<T> From<T> for Delimited<T> {
 impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Delimited<T> {
     type Error = T::Error;
 
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
-        Ok(match T::deserialize(reader, peek)? {
+        Ok(match T::deserialize(reader, peek, whitespace)? {
             Err(x) => Err(x),
-            Ok(x) => match LiteralSemiColon::deserialize(reader, peek)? {
+            Ok(x) => match LiteralSemiColon::deserialize(reader, peek, whitespace)? {
                 Err(()) => Err(T::Error::default()),
-                Ok(LiteralSemiColon) => {
+                Ok(LiteralSemiColon::SemiColon(_)) => {
                     Ok(Self(x))
                 },
             },
@@ -222,23 +222,129 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Delimited<T> {
 }
 
 impl<T: PacketSerialize> PacketSerialize for Delimited<T> {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W) -> Result<(), W::Error> {
-        self.0.serialize(writer)?;
-        nb::block!(writer.write(b';'))
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        self.0.serialize(writer, whitespace)?;
+        <Char![';']>::new().serialize(writer, whitespace)?;
+        Ok(())
     }
 }
 
 impl PacketDeserialize for () {
     type Error = Infallible;
 
-    fn deserialize<R: Read<u8>>(_: &mut R, _: &mut Option<u8>)
+    fn deserialize<R: Read<u8>>(_: &mut R, _: &mut Option<u8>, _: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         Ok(Ok(()))
     }
 }
 
 impl PacketSerialize for () {
-    fn serialize<W: Write<u8>>(&self, _: &mut W) -> Result<(), W::Error> {
+    fn serialize<W: Write<u8>>(&self, _: &mut W, _: bool) -> Result<(), W::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Field<T>(pub T);
+
+impl<T> From<T> for Field<T> {
+    fn from(value: T) -> Self { Self(value) }
+}
+
+impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
+    type Error = T::Error;
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while let b' ' | b'\r' | b'\n' = first {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b'.' => {
+                match T::deserialize(reader, peek, whitespace)? {
+                    Err(x) => Err(x),
+                    Ok(x) => Ok(Self(x)),
+                }
+            },
+            b'[' => {
+                let mut first = match peek.take() {
+                    Some(x) => x,
+                    None => nb::block!(reader.read())?,
+                };
+
+                if whitespace {
+                    while let b' ' | b'\r' | b'\n' = first {
+                        first = nb::block!(reader.read())?;
+                    }
+                }
+
+                match first {
+                    b'\"' => {
+                        match T::deserialize(reader, peek, false)? {
+                            Err(x) => Err(x),
+                            Ok(x) => {
+                                let byte = match peek.take() {
+                                    Some(x) => x,
+                                    None => nb::block!(reader.read())?,
+                                };
+
+                                match byte {
+                                    b'\"' => {
+                                        let mut byte = match peek.take() {
+                                            Some(x) => x,
+                                            None => nb::block!(reader.read())?,
+                                        };
+
+                                        if whitespace {
+                                            while let b' ' | b'\r' | b'\n' = first {
+                                                byte = nb::block!(reader.read())?;
+                                            }
+                                        }
+
+                                        match byte {
+                                            b']' => {
+                                                Ok(Self(x))
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Err(<_>::default())
+                                            },
+                                        }
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(<_>::default())
+                                    },
+                                }
+                            },
+                        }
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(<_>::default())
+                    },
+                }
+            },
+            byte => {
+                *peek = Some(byte);
+                Err(<_>::default())
+            },
+        })
+    }
+}
+
+impl<T: PacketSerialize> PacketSerialize for Field<T> {
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        <Char!['.']>::new().serialize(writer, whitespace)?;
+        self.0.serialize(writer, whitespace)?;
         Ok(())
     }
 }

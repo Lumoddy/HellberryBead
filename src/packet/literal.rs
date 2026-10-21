@@ -1,18 +1,19 @@
-use arduino_hal::prelude::_embedded_hal_serial_Read as Read;
+use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
+use nodyn::nodyn;
 
-use super::PacketDeserialize;
+use super::{Char, PacketDeserialize, PacketSerialize};
 
-macro_rules! impl_literal {
+macro_rules! impl_deserialize_literal {
     (
         @ $reader:ident, $peek:ident, read(),
-        { $($pat:pat => $($val:tt)::+ $(($($round:tt)*))? $({ $($curly:tt)* })?),*$(,)? }
+        $($tt:tt)*
     ) => {
         {
             let byte = nb::block!($reader.read())?;
-            impl_literal!
+            impl_deserialize_literal!
             {
                 @ $reader, $peek, byte,
-                { $($pat => $($val)::+ $(($($round)*))? $({ $($curly)* })?,)* }
+                $($tt)*
             }
         }
     };
@@ -22,7 +23,7 @@ macro_rules! impl_literal {
     ) => {
         match $byte {
             $(
-                $pat => impl_literal!
+                $pat => impl_deserialize_literal!
                 {
                     @ $reader, $peek, read(),
                     $($val)::+ $(($($round)*))? $({ $($curly)* })?
@@ -39,7 +40,13 @@ macro_rules! impl_literal {
         @ $reader:ident, $peek:ident, $byte:ident $(())?,
         $($tt:tt)*
     ) => {
-        Ok($($tt)*)
+        match $byte {
+            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => Err(()),
+            byte => {
+                *$peek = Some(byte);
+                Ok($($tt)*)
+            },
+        }
     };
     (
         for $ty:ty { $($tt:tt)* }
@@ -47,177 +54,227 @@ macro_rules! impl_literal {
         impl PacketDeserialize for $ty {
             type Error = ();
 
-            fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
+            fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
                 -> Result<Result<Self, Self::Error>, R::Error> {
                 let mut first = match peek.take() {
                     Some(x) => x,
                     None => nb::block!(reader.read())?,
                 };
 
-                while let b' ' | b'\r' | b'\n' = first {
-                    first = nb::block!(reader.read())?;
+                if whitespace {
+                    while let b' ' | b'\r' | b'\n' = first {
+                        first = nb::block!(reader.read())?;
+                    }
                 }
 
-                Ok(impl_literal! { @ reader, peek, first, { $($tt)* } })
+                Ok(impl_deserialize_literal! { @ reader, peek, first, { $($tt)* } })
             }
         }
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralDot;
-
-impl_literal! {
-    for LiteralDot {
-        b'.' => Self,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralDot {
+        Dot(Char!['.']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+    impl PacketDeserialize {
+        type Error = ();
+        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+            -> Result<Result<Self, Self::Error>, R::Error> {
+            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Dot))
+        }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralOpen;
-
-impl_literal! {
-    for LiteralOpen {
-        b'(' => Self,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralOpen {
+        Open(Char!['(']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+    impl PacketDeserialize {
+        type Error = ();
+        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+            -> Result<Result<Self, Self::Error>, R::Error> {
+            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Open))
+        }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralClose;
-
-impl_literal! {
-    for LiteralClose {
-        b')' => Self,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralClose {
+        Close(Char![')']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+    impl PacketDeserialize {
+        type Error = ();
+        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+            -> Result<Result<Self, Self::Error>, R::Error> {
+            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Close))
+        }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralComma;
-
-impl_literal! {
-    for LiteralComma {
-        b',' => Self,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralComma {
+        Comma(Char![',']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+    impl PacketDeserialize {
+        type Error = ();
+        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+            -> Result<Result<Self, Self::Error>, R::Error> {
+            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Comma))
+        }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LiteralSemiColon;
-
-impl_literal! {
-    for LiteralSemiColon {
-        b';' => Self,
+impl PacketSerialize for Option<LiteralComma> {
+    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+        self.map(|LiteralComma::Comma(x)| x).serialize(writer, whitespace)
+    }
+}
+impl PacketDeserialize for Option<LiteralComma> {
+    type Error = ();
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Ok(Option::deserialize(reader, peek, whitespace)?.map(|x| x.map(LiteralComma::Comma)))
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiteralPingOrPins {
-    Ping,
-    Pins,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralSemiColon {
+        SemiColon(Char![';']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+    impl PacketDeserialize {
+        type Error = ();
+        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+            -> Result<Result<Self, Self::Error>, R::Error> {
+            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::SemiColon))
+        }
+    }
 }
 
-impl_literal! {
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralPingOrPins {
+        Ping(Char!['p', 'i', 'n', 'g']),
+        Pins(Char!['p', 'i', 'n', 's']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
+}
+impl_deserialize_literal! {
     for LiteralPingOrPins {
-        b'P' | b'p' => {
+        b'p' => {
             b'i' => {
                 b'n' => {
-                    b'g' => Self::Ping,
-                    b's' => Self::Pins,
+                    b'g' => Self::Ping(<_>::default()),
+                    b's' => Self::Pins(<_>::default()),
                 },
             },
         },
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LiteralPinFunctionName {
-    GetPower,
-    GetMode,
-    Flags,
-    SetPower,
-    SetMode,
+nodyn! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum LiteralPinFunctionName {
+        GetPower(Char!['g', 'e', 't', 'P', 'o', 'w', 'e', 'r']),
+        GetMode(Char!['g', 'e', 't', 'M', 'o', 'd', 'e']),
+        Flags(Char!['f', 'l', 'a', 'g', 's']),
+        Supports(Char!['s', 'u', 'p', 'p', 'o', 'r', 't', 's']),
+        SetPower(Char!['s', 'e', 't', 'P', 'o', 'w', 'e', 'r']),
+        SetMode(Char!['s', 'e', 't', 'M', 'o', 'd', 'e']),
+    }
+    impl PacketSerialize {
+        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+    }
 }
-
-impl_literal! {
+impl_deserialize_literal! {
     for LiteralPinFunctionName {
-        b'G' | b'g' => {
+        b'g' => {
             b'e' => {
                 b't' => {
-                    b'P' | b'p' => {
+                    b'P' => {
                         b'o' => {
                             b'w' => {
                                 b'e' => {
-                                    b'r' => Self::GetPower,
+                                    b'r' => Self::GetPower(<_>::default()),
                                 },
                             },
                         },
                     },
-                    b'M' | b'm' => {
+                    b'M' => {
                         b'o' => {
                             b'd' => {
-                                b'e' => Self::GetMode,
+                                b'e' => Self::GetMode(<_>::default()),
                             },
                         },
                     },
                 },
             },
         },
-        b'F' | b'f' => {
+        b'f' => {
             b'l' => {
                 b'a' => {
                     b'g' => {
-                        b's' => Self::Flags,
+                        b's' => Self::Flags(<_>::default()),
                     },
                 },
             },
         },
-        b'S' | b's' => {
+        b's' => {
             b'e' => {
                 b't' => {
-                    b'P' | b'p' => {
+                    b'P' => {
                         b'o' => {
                             b'w' => {
                                 b'e' => {
-                                    b'r' => Self::SetPower,
+                                    b'r' => Self::SetPower(<_>::default()),
                                 },
                             },
                         },
                     },
-                    b'M' | b'm' => {
+                    b'M' => {
                         b'o' => {
                             b'd' => {
-                                b'e' => Self::SetMode,
+                                b'e' => Self::SetMode(<_>::default()),
+                            },
+                        },
+                    },
+                },
+            },
+            b'u' => {
+                b'p' => {
+                    b'p' => {
+                        b'o' => {
+                            b'r' => {
+                                b't' => {
+                                    b's' => Self::Supports(<_>::default()),
+                                },
                             },
                         },
                     },
                 },
             },
         },
-    }
-}
-
-impl PacketDeserialize for Option<LiteralComma> {
-    type Error = ();
-
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>)
-        -> Result<Result<Self, Self::Error>, R::Error> {
-        let mut first = match peek.take() {
-            Some(x) => x,
-            None => nb::block!(reader.read())?,
-        };
-
-        while let b' ' | b'\r' | b'\n' = first {
-            first = nb::block!(reader.read())?;
-        }
-
-        match first {
-            b',' => {
-                *peek = None;
-                Ok(Ok(Some(LiteralComma)))
-            },
-            byte => {
-                *peek = Some(byte);
-                Ok(Ok(None))
-            },
-        }
     }
 }

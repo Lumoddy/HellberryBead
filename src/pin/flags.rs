@@ -1,7 +1,7 @@
-use arduino_hal::prelude::_embedded_hal_serial_Write as Write;
 use bitflags::bitflags;
+use ufmt::{uDisplay, uWrite, uwrite};
 
-use crate::packet::{self, Char};
+use super::PinMode;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -14,73 +14,61 @@ bitflags! {
     }
 }
 
-impl packet::PacketSerialize for PinFlags {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        macro_rules! write {
-            ($($byte:expr),*$(,)?) => {
-                { $( nb::block!(writer.write($byte))?; )* }
-            };
-        }
-
+impl uDisplay for PinFlags {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized {
         if self.is_empty() {
-            write!(b'0');
+            uwrite!(f, "0")
         } else {
             let mut is_first = true;
             if self.contains(PinFlags::DIGITAL_INPUT) {
                 if !is_first {
-                    if whitespace {
-                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
-                    } else {
-                        <Char!['|']>::new().serialize(writer, whitespace)?;
-                    }
+                    uwrite!(f, " | ")?;
                 }
-                <Char!['d', 'i', 'g', 'i', 't', 'a', 'l', 'I', 'n', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
+                uwrite!(f, "digitalInput")?;
                 is_first = false;
             }
             if self.contains(PinFlags::DIGITAL_OUTPUT) {
                 if !is_first {
-                    if whitespace {
-                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
-                    } else {
-                        <Char!['|']>::new().serialize(writer, whitespace)?;
-                    }
+                    uwrite!(f, " | ")?;
                 }
-                <Char!['d', 'i', 'g', 'i', 't', 'a', 'l', 'O', 'u', 't', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
+                uwrite!(f, "digitalOutput")?;
                 is_first = false;
             }
             if self.contains(PinFlags::ANALOG_INPUT) {
                 if !is_first {
-                    if whitespace {
-                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
-                    } else {
-                        <Char!['|']>::new().serialize(writer, whitespace)?;
-                    }
+                    uwrite!(f, " | ")?;
                 }
-                <Char!['a', 'n', 'a', 'l', 'o', 'g', 'I', 'n', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
+                uwrite!(f, "analogInput")?;
                 is_first = false;
             }
             if self.contains(PinFlags::ANALOG_OUTPUT) {
                 if !is_first {
-                    if whitespace {
-                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
-                    } else {
-                        <Char!['|']>::new().serialize(writer, whitespace)?;
-                    }
+                    uwrite!(f, " | ")?;
                 }
-                <Char!['a', 'n', 'a', 'l', 'o', 'g', 'O', 'u', 't', 'p', 'u', 't']>::new().serialize(writer, whitespace)?;
+                uwrite!(f, "analogOutput")?;
                 is_first = false;
             }
             if self.contains(PinFlags::RESERVED) {
                 if !is_first {
-                    if whitespace {
-                        <Char![' ', '|', ' ']>::new().serialize(writer, whitespace)?;
-                    } else {
-                        <Char!['|']>::new().serialize(writer, whitespace)?;
-                    }
+                    uwrite!(f, " | ")?;
                 }
-                <Char!['r', 'e', 's', 'e', 'r', 'v', 'e', 'd']>::new().serialize(writer, whitespace)?;
+                uwrite!(f, "reserved")?;
             }
+            Ok(())
         }
-        Ok(())
+    }
+}
+
+impl From<PinMode> for PinFlags {
+    fn from(value: PinMode) -> Self {
+        match value {
+            PinMode::Ignored => PinFlags::empty(),
+            PinMode::DigitalInput => PinFlags::DIGITAL_INPUT,
+            PinMode::DigitalOutput => PinFlags::DIGITAL_OUTPUT,
+            PinMode::AnalogInput => PinFlags::ANALOG_INPUT,
+            PinMode::AnalogOutput => PinFlags::ANALOG_OUTPUT,
+        }
     }
 }

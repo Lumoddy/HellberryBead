@@ -1,280 +1,509 @@
-use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
-use nodyn::nodyn;
+use arduino_hal::prelude::{_embedded_hal_serial_Read as Read};
+use ufmt::{uDisplay, uWrite, uwrite};
 
-use super::{Char, PacketDeserialize, PacketSerialize};
+use super::{Deserialize, is_literal_char, is_whitespace};
 
-macro_rules! impl_deserialize_literal {
-    (
-        @ $reader:ident, $peek:ident, read(),
-        $($tt:tt)*
-    ) => {
-        {
-            let byte = nb::block!($reader.read())?;
-            impl_deserialize_literal!
-            {
-                @ $reader, $peek, byte,
-                $($tt)*
-            }
-        }
-    };
-    (
-        @ $reader:ident, $peek:ident, $byte:ident,
-        { $($pat:pat => $($val:tt)::+ $(($($round:tt)*))? $({ $($curly:tt)* })?),*$(,)? }
-    ) => {
-        match $byte {
-            $(
-                $pat => impl_deserialize_literal!
-                {
-                    @ $reader, $peek, read(),
-                    $($val)::+ $(($($round)*))? $({ $($curly)* })?
-                },
-            )*
-            #[allow(unreachable_patterns)]
-            byte => {
-                *$peek = Some(byte);
-                Err(())
-            },
-        }
-    };
-    (
-        @ $reader:ident, $peek:ident, $byte:ident $(())?,
-        $($tt:tt)*
-    ) => {
-        match $byte {
-            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => Err(()),
-            byte => {
-                *$peek = Some(byte);
-                Ok($($tt)*)
-            },
-        }
-    };
-    (
-        for $ty:ty { $($tt:tt)* }
-    ) => {
-        impl PacketDeserialize for $ty {
-            type Error = ();
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct LiteralOpen;
 
-            fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-                -> Result<Result<Self, Self::Error>, R::Error> {
-                let mut first = match peek.take() {
-                    Some(x) => x,
-                    None => nb::block!(reader.read())?,
-                };
-
-                if whitespace {
-                    while let b' ' | b'\r' | b'\n' = first {
-                        first = nb::block!(reader.read())?;
-                    }
-                }
-
-                Ok(impl_deserialize_literal! { @ reader, peek, first, { $($tt)* } })
-            }
-        }
-    };
-}
-
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralDot {
-        Dot(Char!['.']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
-    impl PacketDeserialize {
-        type Error = ();
-        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-            -> Result<Result<Self, Self::Error>, R::Error> {
-            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Dot))
-        }
-    }
-}
-
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralOpen {
-        Open(Char!['(']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
-    impl PacketDeserialize {
-        type Error = ();
-        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-            -> Result<Result<Self, Self::Error>, R::Error> {
-            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Open))
-        }
-    }
-}
-
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralClose {
-        Close(Char![')']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
-    impl PacketDeserialize {
-        type Error = ();
-        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-            -> Result<Result<Self, Self::Error>, R::Error> {
-            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Close))
-        }
-    }
-}
-
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralComma {
-        Comma(Char![',']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
-    impl PacketDeserialize {
-        type Error = ();
-        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-            -> Result<Result<Self, Self::Error>, R::Error> {
-            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::Comma))
-        }
-    }
-}
-
-impl PacketSerialize for Option<LiteralComma> {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        self.map(|LiteralComma::Comma(x)| x).serialize(writer, whitespace)
-    }
-}
-impl PacketDeserialize for Option<LiteralComma> {
+impl Deserialize for LiteralOpen {
     type Error = ();
+
     fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
-        Ok(Option::deserialize(reader, peek, whitespace)?.map(|x| x.map(LiteralComma::Comma)))
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
     }
 }
 
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralSemiColon {
-        SemiColon(Char![';']),
+impl Deserialize for Option<LiteralOpen> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b'(' => Ok(Some(LiteralOpen)),
+            byte => {
+                *peek = Some(byte);
+                Ok(None)
+            },
+        })
     }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
+}
+
+impl uDisplay for LiteralOpen {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized { uwrite!(f, "(") }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct LiteralClose;
+
+impl Deserialize for LiteralClose {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
     }
-    impl PacketDeserialize {
-        type Error = ();
-        fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-            -> Result<Result<Self, Self::Error>, R::Error> {
-            Ok(<_>::deserialize(reader, peek, whitespace)?.map(Self::SemiColon))
+}
+
+impl Deserialize for Option<LiteralClose> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b')' => Ok(Some(LiteralClose)),
+            byte => {
+                *peek = Some(byte);
+                Ok(None)
+            },
+        })
+    }
+}
+
+impl uDisplay for LiteralClose {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized { uwrite!(f, ")") }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct LiteralComma;
+
+impl Deserialize for LiteralComma {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
+    }
+}
+
+impl Deserialize for Option<LiteralComma> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b',' => Ok(Some(LiteralComma)),
+            byte => {
+                *peek = Some(byte);
+                Ok(None)
+            },
+        })
+    }
+}
+
+impl uDisplay for LiteralComma {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized { uwrite!(f, ",") }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LiteralField {
+    Ping,
+    Pins,
+}
+
+impl Deserialize for LiteralField {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
+    }
+}
+
+impl Deserialize for Option<LiteralField> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b'p' => match nb::block!(reader.read())? {
+                b'i' => match nb::block!(reader.read())? {
+                    b'n' => match nb::block!(reader.read())? {
+                        b'g' => match nb::block!(reader.read())? {
+                            byte if is_literal_char(byte) => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Ok(Some(LiteralField::Ping))
+                            },
+                        },
+                        b's' => match nb::block!(reader.read())? {
+                            byte if is_literal_char(byte) => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Ok(Some(LiteralField::Pins))
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
+            },
+            byte => {
+                *peek = Some(byte);
+                Ok(None)
+            },
+        })
+    }
+}
+
+impl uDisplay for LiteralField {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized {
+        match self {
+            Self::Ping => uwrite!(f, "ping"),
+            Self::Pins => uwrite!(f, "pins"),
         }
     }
 }
 
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralPingOrPins {
-        Ping(Char!['p', 'i', 'n', 'g']),
-        Pins(Char!['p', 'i', 'n', 's']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LiteralPinsField {
+    GetPower,
+    GetMode,
+    Flags,
+    Supports,
+    SetPower,
+    SetMode,
 }
-impl_deserialize_literal! {
-    for LiteralPingOrPins {
-        b'p' => {
-            b'i' => {
-                b'n' => {
-                    b'g' => Self::Ping(<_>::default()),
-                    b's' => Self::Pins(<_>::default()),
-                },
-            },
-        },
+
+impl Deserialize for LiteralPinsField {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
     }
 }
 
-nodyn! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum LiteralPinFunctionName {
-        GetPower(Char!['g', 'e', 't', 'P', 'o', 'w', 'e', 'r']),
-        GetMode(Char!['g', 'e', 't', 'M', 'o', 'd', 'e']),
-        Flags(Char!['f', 'l', 'a', 'g', 's']),
-        Supports(Char!['s', 'u', 'p', 'p', 'o', 'r', 't', 's']),
-        SetPower(Char!['s', 'e', 't', 'P', 'o', 'w', 'e', 'r']),
-        SetMode(Char!['s', 'e', 't', 'M', 'o', 'd', 'e']),
-    }
-    impl PacketSerialize {
-        fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-    }
-}
-impl_deserialize_literal! {
-    for LiteralPinFunctionName {
-        b'g' => {
-            b'e' => {
-                b't' => {
-                    b'P' => {
-                        b'o' => {
-                            b'w' => {
-                                b'e' => {
-                                    b'r' => Self::GetPower(<_>::default()),
+impl Deserialize for Option<LiteralPinsField> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        let mut first = match peek.take() {
+            Some(x) => x,
+            None => nb::block!(reader.read())?,
+        };
+
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
+        }
+
+        Ok(match first {
+            b'g' => match nb::block!(reader.read())? {
+                b'e' => match nb::block!(reader.read())? {
+                    b't' => match nb::block!(reader.read())? {
+                        b'P' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'w' => match nb::block!(reader.read())? {
+                                    b'e' => match nb::block!(reader.read())? {
+                                        b'r' => match nb::block!(reader.read())? {
+                                            byte if is_literal_char(byte) => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Ok(Some(LiteralPinsField::GetPower))
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
                                 },
                             },
-                        },
-                    },
-                    b'M' => {
-                        b'o' => {
-                            b'd' => {
-                                b'e' => Self::GetMode(<_>::default()),
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
                             },
                         },
-                    },
-                },
-            },
-        },
-        b'f' => {
-            b'l' => {
-                b'a' => {
-                    b'g' => {
-                        b's' => Self::Flags(<_>::default()),
-                    },
-                },
-            },
-        },
-        b's' => {
-            b'e' => {
-                b't' => {
-                    b'P' => {
-                        b'o' => {
-                            b'w' => {
-                                b'e' => {
-                                    b'r' => Self::SetPower(<_>::default()),
+                        b'M' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'd' => match nb::block!(reader.read())? {
+                                    b'e' => match nb::block!(reader.read())? {
+                                        byte if is_literal_char(byte) => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Ok(Some(LiteralPinsField::GetMode))
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
                                 },
                             },
-                        },
-                    },
-                    b'M' => {
-                        b'o' => {
-                            b'd' => {
-                                b'e' => Self::SetMode(<_>::default()),
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
                             },
                         },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
                     },
                 },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
             },
-            b'u' => {
-                b'p' => {
-                    b'p' => {
-                        b'o' => {
-                            b'r' => {
-                                b't' => {
-                                    b's' => Self::Supports(<_>::default()),
+            b'f' => match nb::block!(reader.read())? {
+                b'l' => match nb::block!(reader.read())? {
+                    b'a' => match nb::block!(reader.read())? {
+                        b'g' => match nb::block!(reader.read())? {
+                            b's' => match nb::block!(reader.read())? {
+                                byte if is_literal_char(byte) => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Ok(Some(LiteralPinsField::Flags))
                                 },
                             },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
                         },
                     },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
                 },
             },
-        },
+            b's' => match nb::block!(reader.read())? {
+                b'e' => match nb::block!(reader.read())? {
+                    b't' => match nb::block!(reader.read())? {
+                        b'P' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'w' => match nb::block!(reader.read())? {
+                                    b'e' => match nb::block!(reader.read())? {
+                                        b'r' => match nb::block!(reader.read())? {
+                                            byte if is_literal_char(byte) => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Ok(Some(LiteralPinsField::SetPower))
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        b'M' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'd' => match nb::block!(reader.read())? {
+                                    b'e' => match nb::block!(reader.read())? {
+                                        byte if is_literal_char(byte) => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Ok(Some(LiteralPinsField::SetMode))
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                b'u' => match nb::block!(reader.read())? {
+                    b'p' => match nb::block!(reader.read())? {
+                        b'p' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'r' => match nb::block!(reader.read())? {
+                                    b't' => match nb::block!(reader.read())? {
+                                        b's' => match nb::block!(reader.read())? {
+                                            byte if is_literal_char(byte) => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Ok(Some(LiteralPinsField::Supports))
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
+            },
+            byte => {
+                *peek = Some(byte);
+                Ok(None)
+            },
+        })
     }
 }

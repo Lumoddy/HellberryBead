@@ -1,6 +1,7 @@
-use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
+use arduino_hal::prelude::{_embedded_hal_serial_Read as Read};
+use ufmt::{uDisplay, uWrite, uwrite};
 
-use crate::packet;
+use crate::packet::{Deserialize, is_literal_char, is_whitespace};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PinMode {
@@ -11,139 +12,322 @@ pub enum PinMode {
     AnalogOutput,
 }
 
-impl packet::PacketSerialize for PinMode {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, _: bool) -> Result<(), W::Error> {
-        macro_rules! write {
-            ( $( $byte:expr ),* $(,)? ) => {
-                { $( nb::block!(writer.write( $byte ))?; )* }
-            };
-        }
+impl Deserialize for PinMode {
+    type Error = ();
 
-        match *self {
-            Self::Ignored => write!(b'i', b'g', b'n', b'o', b'r', b'e', b'd'),
-            Self::DigitalInput => write!(b'd', b'i', b'g', b'i', b't', b'a', b'l', b'I', b'n', b'p', b'u', b't'),
-            Self::DigitalOutput => write!(b'd', b'i', b'g', b'i', b't', b'a', b'l', b'O', b'u', b't', b'p', b'u', b't'),
-            Self::AnalogInput => write!(b'a', b'n', b'a', b'l', b'o', b'g', b'I', b'n', b'p', b'u', b't'),
-            Self::AnalogOutput => write!(b'a', b'n', b'a', b'l', b'o', b'g', b'O', b'u', b't', b'p', b'u', b't'),
-        }
-        Ok(())
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
     }
 }
 
-impl packet::PacketDeserialize for PinMode {
+impl Deserialize for Option<PinMode> {
     type Error = ();
 
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, _: bool)
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         let mut first = match peek.take() {
             Some(x) => x,
             None => nb::block!(reader.read())?,
         };
 
-        while let b' ' | b'\r' | b'\n' = first {
-            first = nb::block!(reader.read())?;
-        }
-
-        // Treat this like lexing an identifier, which means that an otherwise
-        // valid "Ignored" should not return a valid value if its followed by
-        // eg. an "_" making "Ignored_".
-        macro_rules! complete {
-            ($result:expr $(,)?) => {
-                match nb::block!(reader.read())? {
-                    b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => Err(()),
-                    byte => {
-                        *peek = Some(byte);
-                        Ok( $result )
-                    },
-                }
-            };
-        }
-
-        macro_rules! sequence {
-            ($($pat:pat),*$(,)? $( => $result:expr )?) => {
-                {
-                    $(
-                        #[allow(unused_parens)]
-                        let ($pat) = nb::block!(reader.read())? else {
-                            return Ok(Err(()));
-                        };
-                    )*
-
-                    $( complete!( $result ) )?
-                }
-            };
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
         }
 
         Ok(match first {
-            b'i' => sequence!(
-                b'g',
-                b'n',
-                b'o',
-                b'r',
-                b'e',
-                b'd',
-                => PinMode::Ignored),
-            b'd' => {
-                sequence!(
-                    b'i',
-                    b'g',
-                    b'i',
-                    b't',
-                    b'a',
-                    b'l');
-
-                match nb::block!(reader.read())? {
-                    b'I' => sequence!(
-                        b'n',
-                        b'p',
-                        b'u',
-                        b't',
-                        => PinMode::DigitalInput),
-                    b'O' => sequence!(
-                        b'u',
-                        b't',
-                        b'p',
-                        b'u',
-                        b't',
-                        => PinMode::DigitalOutput),
+            b'i' => match nb::block!(reader.read())? {
+                b'g' => match nb::block!(reader.read())? {
+                    b'n' => match nb::block!(reader.read())? {
+                        b'o' => match nb::block!(reader.read())? {
+                            b'r' => match nb::block!(reader.read())? {
+                                b'e' => match nb::block!(reader.read())? {
+                                    b'd' => match nb::block!(reader.read())? {
+                                        byte if is_literal_char(byte) => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Ok(Some(PinMode::Ignored))
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
                     byte => {
                         *peek = Some(byte);
-                        Ok(PinMode::Ignored)
+                        Err(())
                     },
-                }
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
             },
-            b'a' => {
-                sequence!(
-                    b'n',
-                    b'a',
-                    b'l',
-                    b'o',
-                    b'g');
-
-                match nb::block!(reader.read())? {
-                    b'I' => sequence!(
-                        b'n',
-                        b'p',
-                        b'u',
-                        b't',
-                        => PinMode::AnalogInput),
-                    b'O' => sequence!(
-                        b'u',
-                        b't',
-                        b'p',
-                        b'u',
-                        b't',
-                        => PinMode::AnalogOutput),
+            b'd' => match nb::block!(reader.read())? {
+                b'i' => match nb::block!(reader.read())? {
+                    b'g' => match nb::block!(reader.read())? {
+                        b'i' => match nb::block!(reader.read())? {
+                            b't' => match nb::block!(reader.read())? {
+                                b'a' => match nb::block!(reader.read())? {
+                                    b'l' => match nb::block!(reader.read())? {
+                                        b'I' => match nb::block!(reader.read())? {
+                                            b'n' => match nb::block!(reader.read())? {
+                                                b'p' => match nb::block!(reader.read())? {
+                                                    b'u' => match nb::block!(reader.read())? {
+                                                        b't' => match nb::block!(reader.read())? {
+                                                            byte if is_literal_char(byte) => {
+                                                                *peek = Some(byte);
+                                                                Err(())
+                                                            },
+                                                            byte => {
+                                                                *peek = Some(byte);
+                                                                Ok(Some(PinMode::DigitalInput))
+                                                            },
+                                                        },
+                                                        byte => {
+                                                            *peek = Some(byte);
+                                                            Err(())
+                                                        },
+                                                    },
+                                                    byte => {
+                                                        *peek = Some(byte);
+                                                        Err(())
+                                                    },
+                                                },
+                                                byte => {
+                                                    *peek = Some(byte);
+                                                    Err(())
+                                                },
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                        },
+                                        b'O' => match nb::block!(reader.read())? {
+                                            b'u' => match nb::block!(reader.read())? {
+                                                b't' => match nb::block!(reader.read())? {
+                                                    b'p' => match nb::block!(reader.read())? {
+                                                        b'u' => match nb::block!(reader.read())? {
+                                                            b't' => match nb::block!(reader.read())? {
+                                                                byte if is_literal_char(byte) => {
+                                                                    *peek = Some(byte);
+                                                                    Err(())
+                                                                },
+                                                                byte => {
+                                                                    *peek = Some(byte);
+                                                                    Ok(Some(PinMode::DigitalOutput))
+                                                                },
+                                                            },
+                                                            byte => {
+                                                                *peek = Some(byte);
+                                                                Err(())
+                                                            },
+                                                        },
+                                                        byte => {
+                                                            *peek = Some(byte);
+                                                            Err(())
+                                                        },
+                                                    },
+                                                    byte => {
+                                                        *peek = Some(byte);
+                                                        Err(())
+                                                    },
+                                                },
+                                                byte => {
+                                                    *peek = Some(byte);
+                                                    Err(())
+                                                },
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
                     byte => {
                         *peek = Some(byte);
-                        Ok(PinMode::Ignored)
+                        Err(())
                     },
-                }
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
+            },
+            b'a' => match nb::block!(reader.read())? {
+                b'n' => match nb::block!(reader.read())? {
+                    b'a' => match nb::block!(reader.read())? {
+                        b'l' => match nb::block!(reader.read())? {
+                            b'o' => match nb::block!(reader.read())? {
+                                b'g' => match nb::block!(reader.read())? {
+                                    b'I' => match nb::block!(reader.read())? {
+                                        b'n' => match nb::block!(reader.read())? {
+                                            b'p' => match nb::block!(reader.read())? {
+                                                b'u' => match nb::block!(reader.read())? {
+                                                    b't' => match nb::block!(reader.read())? {
+                                                        byte if is_literal_char(byte) => {
+                                                            *peek = Some(byte);
+                                                            Err(())
+                                                        },
+                                                        byte => {
+                                                            *peek = Some(byte);
+                                                            Ok(Some(PinMode::DigitalInput))
+                                                        },
+                                                    },
+                                                    byte => {
+                                                        *peek = Some(byte);
+                                                        Err(())
+                                                    },
+                                                },
+                                                byte => {
+                                                    *peek = Some(byte);
+                                                    Err(())
+                                                },
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    b'O' => match nb::block!(reader.read())? {
+                                        b'u' => match nb::block!(reader.read())? {
+                                            b't' => match nb::block!(reader.read())? {
+                                                b'p' => match nb::block!(reader.read())? {
+                                                    b'u' => match nb::block!(reader.read())? {
+                                                        b't' => match nb::block!(reader.read())? {
+                                                            byte if is_literal_char(byte) => {
+                                                                *peek = Some(byte);
+                                                                Err(())
+                                                            },
+                                                            byte => {
+                                                                *peek = Some(byte);
+                                                                Ok(Some(PinMode::DigitalOutput))
+                                                            },
+                                                        },
+                                                        byte => {
+                                                            *peek = Some(byte);
+                                                            Err(())
+                                                        },
+                                                    },
+                                                    byte => {
+                                                        *peek = Some(byte);
+                                                        Err(())
+                                                    },
+                                                },
+                                                byte => {
+                                                    *peek = Some(byte);
+                                                    Err(())
+                                                },
+                                            },
+                                            byte => {
+                                                *peek = Some(byte);
+                                                Err(())
+                                            },
+                                        },
+                                        byte => {
+                                            *peek = Some(byte);
+                                            Err(())
+                                        },
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
             },
             byte => {
                 *peek = Some(byte);
-                Err(())
+                Ok(None)
             },
         })
+    }
+}
+
+impl uDisplay for PinMode {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized {
+        match self {
+            Self::Ignored => uwrite!(f, "ignored"),
+            Self::DigitalInput => uwrite!(f, "digitalInput"),
+            Self::DigitalOutput => uwrite!(f, "digitalOutput"),
+            Self::AnalogInput => uwrite!(f, "analogInput"),
+            Self::AnalogOutput => uwrite!(f, "analogOutput"),
+        }
     }
 }

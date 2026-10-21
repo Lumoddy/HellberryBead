@@ -1,140 +1,30 @@
-use core::convert::Infallible;
-
-use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
-use ufmt::{Formatter, uDisplay, uWrite};
-
-mod char;
-pub use char::*;
+use arduino_hal::prelude::{_embedded_hal_serial_Read as Read};
+use ufmt::{Formatter, uDisplay, uWrite, uwrite};
 
 mod literal;
-pub use literal::*;
 
 pub mod incoming;
 pub mod outgoing;
 
-pub trait PacketDeserialize<Word = u8>: Sized {
+pub const fn is_literal_char(byte: u8) -> bool {
+    matches!(byte, b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_')
+}
+
+pub const fn is_whitespace(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t')
+}
+
+pub trait Deserialize: Sized {
     type Error;
 
-    fn deserialize<R: Read<Word>>(reader: &mut R, peek: &mut Option<Word>, whitespace: bool)
-        -> Result<Result<Self, Self::Error>, R::Error>;
-}
-
-pub trait PacketSerialize<Word = u8> {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error>;
-}
-
-impl<T: PacketSerialize<Word> + ?Sized, Word> PacketSerialize<Word> for &T {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        T::serialize(self, writer, whitespace)
-    }
-}
-
-impl<T: PacketSerialize<Word> + ?Sized, Word> PacketSerialize<Word> for &mut T {
-    fn serialize<W: Write<Word>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        T::serialize(self, writer, whitespace)
-    }
-}
-
-impl PacketSerialize for bool {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        match *self {
-            true => <Char!['t', 'r', 'u', 'e']>::new().serialize(writer, whitespace),
-            false => <Char!['f', 'a', 'l', 's', 'e']>::new().serialize(writer, whitespace),
-        }
-    }
-}
-
-impl PacketDeserialize for bool {
-    type Error = ();
-
     fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
-        -> Result<Result<Self, Self::Error>, R::Error> {
-        let mut first = match peek.take() {
-            Some(x) => x,
-            None => nb::block!(reader.read())?,
-        };
-
-        if whitespace {
-            while let b' ' | b'\r' | b'\n' = first {
-                first = nb::block!(reader.read())?;
-            }
-        }
-
-        // Treat this like lexing an identifier, which means that an otherwise
-        // valid "true" should not return a valid value if its followed by eg.
-        // an "r" making "truer".
-        macro_rules! complete {
-            ($result:expr $(,)?) => {
-                match nb::block!(reader.read())? {
-                    b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => Err(()),
-                    byte => {
-                        *peek = Some(byte);
-                        Ok( $result )
-                    },
-                }
-            };
-        }
-
-        macro_rules! sequence {
-            ($($pat:pat),*$(,)? $( => $result:expr )?) => {
-                {
-                    $(
-                        #[allow(unused_parens)]
-                        let ($pat) = nb::block!(reader.read())? else {
-                            return Ok(Err(()));
-                        };
-                    )*
-
-                    $( complete!( $result ) )?
-                }
-            };
-        }
-
-        Ok(match first {
-            b'0' => complete!(false),
-            b'1' => complete!(true),
-            b'T' | b't' => sequence!(
-                b'r',
-                b'u',
-                b'e',
-                => true),
-            b'F' | b'f' => sequence!(
-                b'a',
-                b'l',
-                b's',
-                b'e',
-                => false),
-            byte => {
-                *peek = Some(byte);
-                Ok(false)
-            },
-        })
-    }
+        -> Result<Result<Self, Self::Error>, R::Error>;
 }
 
 macro_rules! impl_int {
     ($($ty:ident: $size:literal),*$(,)?) => {
         $(
-            impl PacketSerialize for $ty {
-                fn serialize<W: Write<u8>>(&self, writer: &mut W, _: bool) -> Result<(), W::Error> {
-                    struct Writer<'a, W: Write<u8>> { writer: &'a mut W }
-
-                    impl<W: Write<u8>> uWrite for Writer<'_, W> {
-                        type Error = W::Error;
-
-                        fn write_str(&mut self, s: &str) -> Result<(), Self::Error> {
-                            for byte in s.bytes() {
-                                nb::block!(self.writer.write(byte))?;
-                            }
-                            Ok(())
-                        }
-                    }
-
-                    uDisplay::fmt(self, &mut Formatter::new(&mut Writer { writer }))
-                }
-            }
-
-            impl PacketDeserialize for $ty {
+            impl Deserialize for $ty {
                 type Error = ();
 
                 fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
@@ -145,7 +35,7 @@ macro_rules! impl_int {
                     };
 
                     if whitespace {
-                        while let b' ' | b'\r' | b'\n' = first {
+                        while is_whitespace(first) {
                             first = nb::block!(reader.read())?;
                         }
                     }
@@ -154,8 +44,9 @@ macro_rules! impl_int {
                     let mut i = 0;
 
                     match first {
-                        b'0'..=b'9' | b'-' => {
-                            buffer[i] = first;
+                        b'_' => { },
+                        byte @ (b'0'..=b'9' | b'-') => {
+                            buffer[i] = byte;
                             i += 1;
                         },
                         byte => {
@@ -165,14 +56,13 @@ macro_rules! impl_int {
                     }
 
                     loop {
-                        if i >= buffer.len() {
-                            return Ok(Err(()));
-                        }
-
                         match nb::block!(reader.read())? {
                             b'_' => { },
-                            b'0'..=b'9' => {
-                                buffer[i] = nb::block!(reader.read())?;
+                            byte @ b'0'..=b'9' => {
+                                if i >= buffer.len() {
+                                    return Ok(Err(()));
+                                }
+                                buffer[i] = byte;
                                 i += 1;
                             },
                             byte => {
@@ -182,11 +72,8 @@ macro_rules! impl_int {
                         }
                     }
 
-                    match core::str::from_utf8(&buffer[..i]) {
-                        Ok(s) => match s.parse::<$ty>() {
-                            Ok(value) => Ok(Ok(value)),
-                            Err(_) => Ok(Err(())),
-                        },
+                    match core::str::from_utf8(&buffer[..i]).unwrap().parse::<$ty>() {
+                        Ok(value) => Ok(Ok(value)),
                         Err(_) => Ok(Err(())),
                     }
                 }
@@ -204,44 +91,41 @@ impl<T> From<T> for Delimited<T> {
     fn from(value: T) -> Self { Self(value) }
 }
 
-impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Delimited<T> {
+impl<T: Deserialize<Error: Default>> Deserialize for Delimited<T> {
     type Error = T::Error;
 
     fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         Ok(match T::deserialize(reader, peek, whitespace)? {
             Err(x) => Err(x),
-            Ok(x) => match LiteralSemiColon::deserialize(reader, peek, whitespace)? {
-                Err(()) => Err(T::Error::default()),
-                Ok(LiteralSemiColon::SemiColon(_)) => {
-                    Ok(Self(x))
-                },
+            Ok(x) => {
+                let mut first = match peek.take() {
+                    Some(x) => x,
+                    None => nb::block!(reader.read())?,
+                };
+
+                if whitespace {
+                    while is_whitespace(first) {
+                        first = nb::block!(reader.read())?;
+                    }
+                }
+
+                match first {
+                    b'\n' => Ok(Self(x)),
+                    byte => {
+                        *peek = Some(byte);
+                        Err(<_>::default())
+                    },
+                }
             },
         })
     }
 }
 
-impl<T: PacketSerialize> PacketSerialize for Delimited<T> {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        self.0.serialize(writer, whitespace)?;
-        <Char![';']>::new().serialize(writer, whitespace)?;
-        Ok(())
-    }
-}
-
-impl PacketDeserialize for () {
-    type Error = Infallible;
-
-    fn deserialize<R: Read<u8>>(_: &mut R, _: &mut Option<u8>, _: bool)
-        -> Result<Result<Self, Self::Error>, R::Error> {
-        Ok(Ok(()))
-    }
-}
-
-impl PacketSerialize for () {
-    fn serialize<W: Write<u8>>(&self, _: &mut W, _: bool) -> Result<(), W::Error> {
-        Ok(())
-    }
+impl<T: uDisplay> uDisplay for Delimited<T> {
+    fn fmt<W>(&self, f: &mut Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized { uwrite!(f, "{}\n", self.0) }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -251,7 +135,16 @@ impl<T> From<T> for Field<T> {
     fn from(value: T) -> Self { Self(value) }
 }
 
-impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
+impl<T: Deserialize<Error: Default>> Deserialize for Field<T> {
+    type Error = T::Error;
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or_else(<_>::default)))
+    }
+}
+
+impl<T: Deserialize<Error: Default>> Deserialize for Option<Field<T>> {
     type Error = T::Error;
 
     fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
@@ -262,7 +155,7 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
         };
 
         if whitespace {
-            while let b' ' | b'\r' | b'\n' = first {
+            while is_whitespace(first) {
                 first = nb::block!(reader.read())?;
             }
         }
@@ -271,7 +164,7 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
             b'.' => {
                 match T::deserialize(reader, peek, whitespace)? {
                     Err(x) => Err(x),
-                    Ok(x) => Ok(Self(x)),
+                    Ok(x) => Ok(Some(Field(x))),
                 }
             },
             b'[' => {
@@ -281,7 +174,7 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
                 };
 
                 if whitespace {
-                    while let b' ' | b'\r' | b'\n' = first {
+                    while is_whitespace(first) {
                         first = nb::block!(reader.read())?;
                     }
                 }
@@ -304,14 +197,14 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
                                         };
 
                                         if whitespace {
-                                            while let b' ' | b'\r' | b'\n' = first {
+                                            while is_whitespace(first) {
                                                 byte = nb::block!(reader.read())?;
                                             }
                                         }
 
                                         match byte {
                                             b']' => {
-                                                Ok(Self(x))
+                                                Ok(Some(Field(x)))
                                             },
                                             byte => {
                                                 *peek = Some(byte);
@@ -341,10 +234,8 @@ impl<T: PacketDeserialize<Error: Default>> PacketDeserialize for Field<T> {
     }
 }
 
-impl<T: PacketSerialize> PacketSerialize for Field<T> {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        <Char!['.']>::new().serialize(writer, whitespace)?;
-        self.0.serialize(writer, whitespace)?;
-        Ok(())
-    }
+impl<T: uDisplay> uDisplay for Field<T> {
+    fn fmt<W>(&self, f: &mut Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized { uwrite!(f, ".{}", self.0) }
 }

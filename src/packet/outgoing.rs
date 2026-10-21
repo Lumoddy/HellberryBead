@@ -1,12 +1,11 @@
-use arduino_hal::prelude::_embedded_hal_serial_Write as Write;
+use ufmt::{uDisplay, uWrite, uwrite};
 
 use crate::pin::{PinFlags, PinId, PinMode};
 
-use super::{Field, PacketSerialize};
-use super::char::Char;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Packet {
+    /// Encoded as `"ready"`.
+    Ready,
     /// Encoded as `"pong"`.
     Pong,
     /// Encoded as `"pins.{pin}.power = {power}"`.
@@ -15,69 +14,47 @@ pub enum Packet {
     PinModeResponse { pin: PinId, mode: PinMode },
     /// Encoded as `"pins.{pin}.flags = {flags}"`.
     PinFlagsResponse { pin: PinId, flags: PinFlags },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {
-    /// Encoded as `"pins.{pin}.error(\"Unsupported mode: {mode}\")"`.
+    /// Encoded as `"error.malformedPacketAt()"`.
+    MalformedPacket { pos: usize },
+    /// Encoded as `"pins.{pin}.error.unsupportedMode({mode})"`.
     UnsupportedPinMode { pin: PinId, mode: PinMode },
+    /// Encoded as `"pins.{pin}.error.getPowerDenied()"`.
+    PinGetPowerDenied { pin: PinId },
+    /// Encoded as `"pins.{pin}.error.setPowerDenied()"`.
+    PinSetPowerDenied { pin: PinId },
 }
 
-impl PacketSerialize for Packet {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+impl uDisplay for Packet {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized {
         match self {
+            Self::Ready => {
+                uwrite!(f, "ready")
+            },
             Self::Pong => {
-                <Char!['p', 'o', 'n', 'g']>::new().serialize(writer, whitespace)?;
-                Ok(())
+                uwrite!(f, "pong")
             },
             Self::PinPowerResponse { pin, power } => {
-                <Char!['p', 'i', 'n', 's']>::new().serialize(writer, whitespace)?;
-                Field(pin).serialize(writer, whitespace)?;
-                Field(<Char!['p', 'o', 'w', 'e', 'r']>::new()).serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                <Char!['=']>::new().serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                power.serialize(writer, whitespace)?;
-                Ok(())
+                uwrite!(f, "pins.{}.power = {}", pin, power)
             },
             Self::PinModeResponse { pin, mode } => {
-                <Char!['p', 'i', 'n', 's']>::new().serialize(writer, whitespace)?;
-                Field(pin).serialize(writer, whitespace)?;
-                Field(<Char!['m', 'o', 'd', 'e']>::new()).serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                <Char!['=']>::new().serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                mode.serialize(writer, whitespace)?;
-                Ok(())
+                uwrite!(f, "pins.{}.mode = {}", pin, mode)
             },
             Self::PinFlagsResponse { pin, flags } => {
-                <Char!['p', 'i', 'n', 's']>::new().serialize(writer, whitespace)?;
-                Field(pin).serialize(writer, whitespace)?;
-                Field(<Char!['f', 'l', 'a', 'g', 's']>::new()).serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                <Char!['=']>::new().serialize(writer, whitespace)?;
-                <Char![' ']>::new().serialize(writer, whitespace)?;
-                flags.serialize(writer, whitespace)?;
-                Ok(())
+                uwrite!(f, "pins.{}.flags = {}", pin, flags)
             },
-        }
-    }
-}
-
-impl PacketSerialize for Error {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
-        match self {
+            Self::MalformedPacket { pos } => {
+                uwrite!(f, "error.malformedPacketAt({})", pos)
+            },
             Self::UnsupportedPinMode { pin, mode } => {
-                <Char!['p', 'i', 'n', 's']>::new().serialize(writer, whitespace)?;
-                Field(pin).serialize(writer, whitespace)?;
-                Field(<Char!['e', 'r', 'r', 'o', 'r']>::new()).serialize(writer, whitespace)?;
-                <Char!['(']>::new().serialize(writer, whitespace)?;
-                <Char!['"']>::new().serialize(writer, whitespace)?;
-                <Char!['U', 'n', 's', 'u', 'p', 'p', 'o', 'r', 't', 'e', 'd', ' ', 'm', 'o', 'd', 'e', ':', ' ']>::new().serialize(writer, whitespace)?;
-                mode.serialize(writer, whitespace)?;
-                <Char!['"']>::new().serialize(writer, whitespace)?;
-                <Char![')']>::new().serialize(writer, whitespace)?;
-                Ok(())
+                uwrite!(f, "pins.{}.error.unsupportedMode({})", pin, mode)
+            },
+            Self::PinGetPowerDenied { pin } => {
+                uwrite!(f, "pins.{}.error.getPowerDenied()", pin)
+            },
+            Self::PinSetPowerDenied { pin } => {
+                uwrite!(f, "pins.{}.error.setPowerDenied()", pin)
             },
         }
     }

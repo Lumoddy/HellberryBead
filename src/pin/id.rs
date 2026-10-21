@@ -1,8 +1,8 @@
 use arduino_hal::hal::port;
-use arduino_hal::prelude::{_embedded_hal_serial_Read as Read, _embedded_hal_serial_Write as Write};
+use arduino_hal::prelude::{_embedded_hal_serial_Read as Read};
+use ufmt::{uDisplay, uWrite, uwrite};
 
-use crate::packet;
-use crate::packet::Char;
+use crate::packet::{Deserialize, is_literal_char, is_whitespace};
 
 pub(super) trait ConstPinId {
     const ID: PinId;
@@ -16,134 +16,309 @@ macro_rules! impl_id
             $( $id ,)*
         }
 
-        impl PinId {
-            pub const fn name(&self) -> &'static str {
-                match *self {
-                    $( Self:: $id => $name ,)*
-                }
-            }
-        }
-
         $(
             impl ConstPinId for $port {
                 const ID: PinId = PinId:: $id;
             }
         )*
+
+        impl uDisplay for PinId {
+            fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+            where
+                W: uWrite + ?Sized {
+                match self {
+                    $(PinId::$id => uwrite!(f, $name),)*
+                }
+            }
+        }
     };
 }
 
 impl_id! {
-    A0(port::PC0) = "A0",
-    A1(port::PC1) = "A1",
-    A2(port::PC2) = "A2",
-    A3(port::PC3) = "A3",
-    A4(port::PC4) = "A4",
-    A5(port::PC5) = "A5",
-    D0(port::PD0) = "D0",
-    D1(port::PD1) = "D1",
-    D2(port::PD2) = "D2",
-    D3(port::PD3) = "D3",
-    D4(port::PD4) = "D4",
-    D5(port::PD5) = "D5",
-    D6(port::PD6) = "D6",
-    D7(port::PD7) = "D7",
-    D8(port::PB0) = "D8",
-    D9(port::PB1) = "D9",
-    D10(port::PB2) = "D10",
-    D11(port::PB3) = "D11",
-    D12(port::PB4) = "D12",
-    D13(port::PB5) = "D13",
+    D0(port::PD0) = "d0",
+    D1(port::PD1) = "d1",
+    D2(port::PD2) = "d2",
+    D3(port::PD3) = "d3",
+    D4(port::PD4) = "d4",
+    D5(port::PD5) = "d5",
+    D6(port::PD6) = "d6",
+    D7(port::PD7) = "d7",
+    D8(port::PB0) = "d8",
+    D9(port::PB1) = "d9",
+    D10(port::PB2) = "d10",
+    D11(port::PB3) = "d11",
+    D12(port::PB4) = "d12",
+    D13(port::PB5) = "d13",
+    A0(port::PC0) = "a0",
+    A1(port::PC1) = "a1",
+    A2(port::PC2) = "a2",
+    A3(port::PC3) = "a3",
+    A4(port::PC4) = "a4",
+    A5(port::PC5) = "a5",
 }
 
-impl packet::PacketSerialize for PinId {
-    fn serialize<W: Write<u8>>(&self, writer: &mut W, whitespace: bool) -> Result<(), W::Error> {
+impl PinId {
+    pub const fn first() -> Self { Self::D0 }
+
+    pub const fn next(self) -> Option<Self> {
         match self {
-            Self::A0 => <Char!['a', '0']>::new().serialize(writer, whitespace),
-            Self::A1 => <Char!['a', '1']>::new().serialize(writer, whitespace),
-            Self::A2 => <Char!['a', '2']>::new().serialize(writer, whitespace),
-            Self::A3 => <Char!['a', '3']>::new().serialize(writer, whitespace),
-            Self::A4 => <Char!['a', '4']>::new().serialize(writer, whitespace),
-            Self::A5 => <Char!['a', '5']>::new().serialize(writer, whitespace),
-            Self::D0 => <Char!['d', '0']>::new().serialize(writer, whitespace),
-            Self::D1 => <Char!['d', '1']>::new().serialize(writer, whitespace),
-            Self::D2 => <Char!['d', '2']>::new().serialize(writer, whitespace),
-            Self::D3 => <Char!['d', '3']>::new().serialize(writer, whitespace),
-            Self::D4 => <Char!['d', '4']>::new().serialize(writer, whitespace),
-            Self::D5 => <Char!['d', '5']>::new().serialize(writer, whitespace),
-            Self::D6 => <Char!['d', '6']>::new().serialize(writer, whitespace),
-            Self::D7 => <Char!['d', '7']>::new().serialize(writer, whitespace),
-            Self::D8 => <Char!['d', '8']>::new().serialize(writer, whitespace),
-            Self::D9 => <Char!['d', '9']>::new().serialize(writer, whitespace),
-            Self::D10 => <Char!['d', '1', '0']>::new().serialize(writer, whitespace),
-            Self::D11 => <Char!['d', '1', '1']>::new().serialize(writer, whitespace),
-            Self::D12 => <Char!['d', '1', '2']>::new().serialize(writer, whitespace),
-            Self::D13 => <Char!['d', '1', '3']>::new().serialize(writer, whitespace),
+            Self::D0 => Some(Self::D1),
+            Self::D1 => Some(Self::D2),
+            Self::D2 => Some(Self::D3),
+            Self::D3 => Some(Self::D4),
+            Self::D4 => Some(Self::D5),
+            Self::D5 => Some(Self::D6),
+            Self::D6 => Some(Self::D7),
+            Self::D7 => Some(Self::D8),
+            Self::D8 => Some(Self::D9),
+            Self::D9 => Some(Self::D10),
+            Self::D10 => Some(Self::D11),
+            Self::D11 => Some(Self::D12),
+            Self::D12 => Some(Self::D13),
+            Self::D13 => Some(Self::A0),
+            Self::A0 => Some(Self::A1),
+            Self::A1 => Some(Self::A2),
+            Self::A2 => Some(Self::A3),
+            Self::A3 => Some(Self::A4),
+            Self::A4 => Some(Self::A5),
+            Self::A5 => None,
         }
     }
 }
 
-impl packet::PacketDeserialize for PinId {
+impl Deserialize for PinId {
     type Error = ();
 
-    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, _: bool)
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
+        -> Result<Result<Self, Self::Error>, R::Error> {
+        Option::deserialize(reader, peek, whitespace).map(|x| x.and_then(|x| x.ok_or(())))
+    }
+}
+
+impl Deserialize for Option<PinId> {
+    type Error = ();
+
+    fn deserialize<R: Read<u8>>(reader: &mut R, peek: &mut Option<u8>, whitespace: bool)
         -> Result<Result<Self, Self::Error>, R::Error> {
         let mut first = match peek.take() {
             Some(x) => x,
             None => nb::block!(reader.read())?,
         };
 
-        while let b' ' | b'\r' | b'\n' = first {
-            first = nb::block!(reader.read())?;
-        }
-
-        // Treat this like lexing an identifier, which means that an otherwise
-        // valid "D2" should not return a valid value if its followed by eg. a
-        // "3" making "D23".
-        macro_rules! complete {
-            ($result:expr $(,)?) => {
-                match nb::block!(reader.read())? {
-                    b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => Err(()),
-                    byte => {
-                        *peek = Some(byte);
-                        Ok( $result )
-                    },
-                }
-            };
+        if whitespace {
+            while is_whitespace(first) {
+                first = nb::block!(reader.read())?;
+            }
         }
 
         Ok(match first {
             b'a' => match nb::block!(reader.read())? {
-                b'0' => complete!(PinId::A0),
-                b'1' => complete!(PinId::A1),
-                b'2' => complete!(PinId::A2),
-                b'3' => complete!(PinId::A3),
-                b'4' => complete!(PinId::A4),
-                b'5' => complete!(PinId::A5),
+                b'0' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A0))
+                    },
+                },
+                b'1' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A1))
+                    },
+                },
+                b'2' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A2))
+                    },
+                },
+                b'3' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A2))
+                    },
+                },
+                b'4' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A4))
+                    },
+                },
+                b'5' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::A5))
+                    },
+                },
                 byte => {
                     *peek = Some(byte);
-                    Ok(PinId::A0)
+                    Err(())
                 },
             },
             b'd' => match nb::block!(reader.read())? {
-                b'0' => complete!(PinId::D0),
-                b'1' => match nb::block!(reader.read())? {
-                    b'0' => complete!(PinId::D10),
-                    b'1' => complete!(PinId::D11),
-                    b'2' => complete!(PinId::D12),
-                    b'3' => complete!(PinId::D13),
+                b'0' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
                     byte => {
                         *peek = Some(byte);
-                        Ok(PinId::D1)
+                        Ok(Some(PinId::D0))
                     },
                 },
-                b'2' => complete!(PinId::D2),
-                b'3' => complete!(PinId::D3),
-                b'4' => complete!(PinId::D4),
-                b'5' => complete!(PinId::D5),
-                b'6' => complete!(PinId::D6),
-                b'7' => complete!(PinId::D7),
-                b'8' => complete!(PinId::D8),
-                b'9' => complete!(PinId::D9),
+                b'1' => match nb::block!(reader.read())? {
+                    b'0' => match nb::block!(reader.read())? {
+                        byte if is_literal_char(byte) => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Ok(Some(PinId::D10))
+                        },
+                    },
+                    b'1' => match nb::block!(reader.read())? {
+                        byte if is_literal_char(byte) => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Ok(Some(PinId::D11))
+                        },
+                    },
+                    b'2' => match nb::block!(reader.read())? {
+                        byte if is_literal_char(byte) => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Ok(Some(PinId::D12))
+                        },
+                    },
+                    b'3' => match nb::block!(reader.read())? {
+                        byte if is_literal_char(byte) => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Ok(Some(PinId::D13))
+                        },
+                    },
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D1))
+                    },
+                },
+                b'2' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D2))
+                    },
+                },
+                b'3' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D3))
+                    },
+                },
+                b'4' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D4))
+                    },
+                },
+                b'5' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D5))
+                    },
+                },
+                b'6' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D6))
+                    },
+                },
+                b'7' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D7))
+                    },
+                },
+                b'8' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D8))
+                    },
+                },
+                b'9' => match nb::block!(reader.read())? {
+                    byte if is_literal_char(byte) => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Ok(Some(PinId::D9))
+                    },
+                },
                 byte => {
                     *peek = Some(byte);
                     Err(())
@@ -151,7 +326,7 @@ impl packet::PacketDeserialize for PinId {
             },
             byte => {
                 *peek = Some(byte);
-                Err(())
+                Ok(None)
             },
         })
     }

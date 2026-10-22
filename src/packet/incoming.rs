@@ -9,6 +9,8 @@ use super::Deserialize;
 pub enum Packet {
     /// Encoded as `"ping"`.
     Ping,
+    /// Encoded as `"config"`.
+    Config,
     /// Encoded as `"pins.{pin}.getPower()"`.
     GetPinPower { pin: PinId },
     /// Encoded as `"pins.{pin}.getMode()"`.
@@ -44,6 +46,9 @@ impl Deserialize for Option<Packet> {
             },
             Ok(Some(LiteralField::Ping)) => {
                 Ok(Some(Packet::Ping))
+            },
+            Ok(Some(LiteralField::Config)) => {
+                Ok(Some(Packet::Config))
             },
             Ok(Some(LiteralField::Pins)) => match <_>::deserialize(reader, peek, whitespace)? {
                 Err(()) => Err(()),

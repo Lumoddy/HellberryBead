@@ -138,6 +138,7 @@ impl uDisplay for LiteralComma {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LiteralField {
     Ping,
+    Config,
     Pins,
 }
 
@@ -205,6 +206,46 @@ impl Deserialize for Option<LiteralField> {
                     Err(())
                 },
             },
+            b'c' => match nb::block!(reader.read())? {
+                b'o' => match nb::block!(reader.read())? {
+                    b'n' => match nb::block!(reader.read())? {
+                        b'f' => match nb::block!(reader.read())? {
+                            b'i' => match nb::block!(reader.read())? {
+                                b'g' => match nb::block!(reader.read())? {
+                                    byte if is_literal_char(byte) => {
+                                        *peek = Some(byte);
+                                        Err(())
+                                    },
+                                    byte => {
+                                        *peek = Some(byte);
+                                        Ok(Some(LiteralField::Config))
+                                    },
+                                },
+                                byte => {
+                                    *peek = Some(byte);
+                                    Err(())
+                                },
+                            },
+                            byte => {
+                                *peek = Some(byte);
+                                Err(())
+                            },
+                        },
+                        byte => {
+                            *peek = Some(byte);
+                            Err(())
+                        },
+                    },
+                    byte => {
+                        *peek = Some(byte);
+                        Err(())
+                    },
+                },
+                byte => {
+                    *peek = Some(byte);
+                    Err(())
+                },
+            },
             byte => {
                 *peek = Some(byte);
                 Ok(None)
@@ -219,6 +260,7 @@ impl uDisplay for LiteralField {
         W: uWrite + ?Sized {
         match self {
             Self::Ping => uwrite!(f, "ping"),
+            Self::Config => uwrite!(f, "config"),
             Self::Pins => uwrite!(f, "pins"),
         }
     }

@@ -40,6 +40,9 @@ fn main() -> ! {
                     Ok(Ok(Delimited(Some(incoming::Packet::Ping)))) => {
                         outgoing::Packet::Pong
                     },
+                    Ok(Ok(Delimited(Some(incoming::Packet::Config)))) => {
+                        outgoing::Packet::Config { collection: &interactive }
+                    },
                     Ok(Ok(Delimited(Some(incoming::Packet::GetPinPower { pin })))) => {
                         match interactive[pin].power(ctx) {
                             Ok(power) => {

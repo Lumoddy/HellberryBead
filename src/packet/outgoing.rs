@@ -1,9 +1,9 @@
 use ufmt::{uDisplay, uWrite, uwrite};
 
-use crate::pin::{PinFlags, PinId, PinMode};
+use crate::pin::{self, PinFlags, PinId, PinMode};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Packet {
+#[derive(Clone, Copy)]
+pub enum Packet<'a> {
     /// Encoded as `"ready"`.
     Ready,
     /// Encoded as `"pong"`.
@@ -22,9 +22,11 @@ pub enum Packet {
     PinGetPowerDenied { pin: PinId },
     /// Encoded as `"pins.{pin}.error.setPowerDenied()"`.
     PinSetPowerDenied { pin: PinId },
+    /// Encoded as `"config = { model: <model>, [new Pin(<name>, <flags>), ...] }`.
+    Config { collection: &'a pin::Collection },
 }
 
-impl uDisplay for Packet {
+impl uDisplay for Packet<'_> {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where
         W: uWrite + ?Sized {
@@ -55,6 +57,9 @@ impl uDisplay for Packet {
             },
             Self::PinSetPowerDenied { pin } => {
                 uwrite!(f, "pins.{}.error.setPowerDenied()", pin)
+            },
+            Self::Config { collection } => {
+                uwrite!(f, "config = {}", collection)
             },
         }
     }

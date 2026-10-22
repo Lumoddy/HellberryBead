@@ -4,6 +4,8 @@ use arduino_hal::adc;
 
 use super::{Interactable, PinId};
 
+use ufmt::{uDisplay, uWrite, uwrite};
+
 macro_rules! collection_impl {
     (
         $(
@@ -48,6 +50,31 @@ macro_rules! collection_impl {
             }
         }
 
+        pub struct CollectionIter<'a> {
+            source: &'a Collection,
+            index: Option<PinId>,
+        }
+
+        impl<'a> Iterator for CollectionIter<'a> {
+            type Item = &'a dyn Interactable<adc::Adc>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                unsafe fn transmute_lifetime<'a, 'b, T: ?Sized>(value: &'a T) -> &'b T {
+                    unsafe { &*(value as *const T) }
+                }
+
+                let index = self.index?;
+                self.index = index.next();
+
+                // SAFETY: None of the borrows overlap like `core::slice::IterMut`.
+                unsafe {
+                    match index {
+                        $($crate::pin::PinId::$port => Some(transmute_lifetime(&self.source.$field)),)*
+                    }
+                }
+            }
+        }
+
         pub struct CollectionIterMut<'a> {
             source: &'a mut Collection,
             index: Option<PinId>,
@@ -70,6 +97,25 @@ macro_rules! collection_impl {
                         $($crate::pin::PinId::$port => Some(transmute_lifetime(&mut self.source.$field)),)*
                     }
                 }
+            }
+        }
+
+        impl uDisplay for Collection {
+            fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+            where
+                W: uWrite + ?Sized {
+                uwrite!(f, "{{ model: \"Arduino Uno\", pins: [")?;
+                let mut first = true;
+                for pin in self {
+                    if first {
+                        first = false;
+                    } else {
+                        uwrite!(f, ", ")?;
+                    }
+                    uwrite!(f, "new Pin(\"{}\", {})", pin.id(), pin.flags())?;
+                }
+                uwrite!(f, "] }}")?;
+                Ok(())
             }
         }
     };
@@ -101,12 +147,27 @@ collection_impl! {
 pub(crate) use collect_pins;
 
 impl Collection {
+    pub const fn iter(&self) -> CollectionIter<'_> {
+        CollectionIter {
+            source: self,
+            index: Some(PinId::first()),
+        }
+    }
+
     pub const fn iter_mut(&mut self) -> CollectionIterMut<'_> {
         CollectionIterMut {
             source: self,
             index: Some(PinId::first()),
         }
     }
+}
+
+impl<'a> IntoIterator for &'a Collection {
+    type Item = &'a dyn Interactable<adc::Adc>;
+
+    type IntoIter = CollectionIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter { self.iter() }
 }
 
 impl<'a> IntoIterator for &'a mut Collection {

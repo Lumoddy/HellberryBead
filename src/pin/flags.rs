@@ -26,35 +26,35 @@ impl uDisplay for PinFlags {
                 if !is_first {
                     uwrite!(f, " | ")?;
                 }
-                uwrite!(f, "digitalInput")?;
+                uwrite!(f, "DIGITAL_INPUT")?;
                 is_first = false;
             }
             if self.contains(PinFlags::DIGITAL_OUTPUT) {
                 if !is_first {
                     uwrite!(f, " | ")?;
                 }
-                uwrite!(f, "digitalOutput")?;
+                uwrite!(f, "DIGITAL_OUTPUT")?;
                 is_first = false;
             }
             if self.contains(PinFlags::ANALOG_INPUT) {
                 if !is_first {
                     uwrite!(f, " | ")?;
                 }
-                uwrite!(f, "analogInput")?;
+                uwrite!(f, "ANALOG_INPUT")?;
                 is_first = false;
             }
             if self.contains(PinFlags::ANALOG_OUTPUT) {
                 if !is_first {
                     uwrite!(f, " | ")?;
                 }
-                uwrite!(f, "analogOutput")?;
+                uwrite!(f, "ANALOG_OUTPUT")?;
                 is_first = false;
             }
             if self.contains(PinFlags::RESERVED) {
                 if !is_first {
                     uwrite!(f, " | ")?;
                 }
-                uwrite!(f, "reserved")?;
+                uwrite!(f, "RESERVED")?;
             }
             Ok(())
         }

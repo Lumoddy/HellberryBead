@@ -112,7 +112,7 @@ macro_rules! collection_impl {
                     } else {
                         uwrite!(f, ", ")?;
                     }
-                    uwrite!(f, "new Pin(\"{}\", {})", pin.id(), pin.flags())?;
+                    uwrite!(f, "{{ name: \"{}\", flags: {} }}", pin.id(), pin.flags())?;
                 }
                 uwrite!(f, "] }}")?;
                 Ok(())

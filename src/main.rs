@@ -67,13 +67,6 @@ fn main() -> ! {
                         let flags =  interactive[pin].flags();
                         outgoing::Packet::PinFlagsResponse { pin, flags }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::PinSupportsMode { pin, mode })))) => {
-                        if interactive[pin].flags().contains(mode.into()) {
-                            outgoing::Packet::PinModeResponse { pin, mode }
-                        } else {
-                            outgoing::Packet::UnsupportedPinMode { pin, mode }
-                        }
-                    },
                     Ok(Ok(Delimited(Some(incoming::Packet::SetPinPower { pin, power })))) => {
                         let interactive_pin = &mut interactive[pin];
                         match interactive_pin.set_power(power, ctx) {

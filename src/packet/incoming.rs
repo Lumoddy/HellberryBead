@@ -17,8 +17,6 @@ pub enum Packet {
     GetPinMode { pin: PinId },
     /// Encoded as `"pins.{pin}.flags"`.
     PinFlags { pin: PinId },
-    /// Encoded as `"pins.{pin}.supports.{mode}"`.
-    PinSupportsMode { pin: PinId, mode: PinMode },
     /// Encoded as `"pins.{pin}.setPower({power})"`.
     SetPinPower { pin: PinId, power: u8 },
     /// Encoded as `"pins.{pin}.setMode({mode})"`.
@@ -74,12 +72,6 @@ impl Deserialize for Option<Packet> {
                     },
                     Ok(Field(LiteralPinsField::Flags)) => {
                         Ok(Some(Packet::PinFlags { pin }))
-                    },
-                    Ok(Field(LiteralPinsField::Supports)) => match <_>::deserialize(reader, peek, whitespace)? {
-                        Err(()) => Err(()),
-                        Ok(mode) => {
-                            Ok(Some(Packet::PinSupportsMode { pin, mode }))
-                        },
                     },
                     Ok(Field(LiteralPinsField::SetPower)) => match <_>::deserialize(reader, peek, whitespace)? {
                         Err(()) => Err(()),

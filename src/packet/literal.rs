@@ -271,7 +271,6 @@ pub enum LiteralPinsField {
     GetPower,
     GetMode,
     Flags,
-    Supports,
     SetPower,
     SetMode,
 }
@@ -464,52 +463,6 @@ impl Deserialize for Option<LiteralPinsField> {
                                         byte => {
                                             *peek = Some(byte);
                                             Ok(Some(LiteralPinsField::SetMode))
-                                        },
-                                    },
-                                    byte => {
-                                        *peek = Some(byte);
-                                        Err(())
-                                    },
-                                },
-                                byte => {
-                                    *peek = Some(byte);
-                                    Err(())
-                                },
-                            },
-                            byte => {
-                                *peek = Some(byte);
-                                Err(())
-                            },
-                        },
-                        byte => {
-                            *peek = Some(byte);
-                            Err(())
-                        },
-                    },
-                    byte => {
-                        *peek = Some(byte);
-                        Err(())
-                    },
-                },
-                b'u' => match nb::block!(reader.read())? {
-                    b'p' => match nb::block!(reader.read())? {
-                        b'p' => match nb::block!(reader.read())? {
-                            b'o' => match nb::block!(reader.read())? {
-                                b'r' => match nb::block!(reader.read())? {
-                                    b't' => match nb::block!(reader.read())? {
-                                        b's' => match nb::block!(reader.read())? {
-                                            byte if is_literal_char(byte) => {
-                                                *peek = Some(byte);
-                                                Err(())
-                                            },
-                                            byte => {
-                                                *peek = Some(byte);
-                                                Ok(Some(LiteralPinsField::Supports))
-                                            },
-                                        },
-                                        byte => {
-                                            *peek = Some(byte);
-                                            Err(())
                                         },
                                     },
                                     byte => {

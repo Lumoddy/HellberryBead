@@ -20,15 +20,17 @@ fn main() -> ! {
     let mut buffer = heapless::Deque::new();
 
     loop {
-        match read_frame(&mut serial, &mut buffer) {
+        let response = match read_frame(&mut serial, &mut buffer) {
             Err(FrameError::NotMagic) => {
                 _ = buffer.pop_front();
+                continue;
             },
             Err(FrameError::ChecksumMismatch) => {
                 buffer.clear();
+                outgoing::Response::NACK { message: b"Packet corrupted" }
             },
             Ok(payload) => {
-                let response = match incoming::deserialize(payload) {
+                match incoming::deserialize(payload) {
                     Err(incoming::Error::UnexpectedEndOfPacket) => {
                         outgoing::Response::NACK { message: b"Unexpected end of packet" }
                     },
@@ -99,16 +101,16 @@ fn main() -> ! {
                             }
                         }
                     },
-                };
-
-                buffer.clear();
-                outgoing::serialize(&response, &mut buffer);
-                surround_frame(&mut buffer);
-
-                for byte in buffer.iter() {
-                    serial.write_byte(*byte);
                 }
             },
+        };
+
+        buffer.clear();
+        outgoing::serialize(&response, &mut buffer);
+        surround_frame(&mut buffer);
+
+        for byte in buffer.iter() {
+            serial.write_byte(*byte);
         }
     }
 }

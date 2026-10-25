@@ -120,7 +120,11 @@ pub fn deserialize(payload: &[u8]) -> Result<Request<'_>, Error> {
 
             Ok(Request::SetPinMode { pin, mode })
         },
-        [_, ..] => Err(Error::InvalidPacketId),
-        [] => Err(Error::UnexpectedEndOfPacket),
+        [_, ..] => {
+            Err(Error::InvalidPacketId)
+        },
+        [] => {
+            Err(Error::UnexpectedEndOfPacket)
+        },
     }
 }

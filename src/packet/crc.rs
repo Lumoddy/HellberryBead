@@ -1,6 +1,9 @@
 
 /// Implementation from
 /// https://resources.basicmicro.com/cyclic-redundancy-check-explained/.
+///
+/// Generates a checksum that can be used to detect (not recover) from errors in
+/// a packet payload that can appear from data loss or corruption.
 #[derive(Clone)]
 pub struct CRC16 {
     pub state: u16,

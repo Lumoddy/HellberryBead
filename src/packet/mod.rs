@@ -1,3 +1,5 @@
+//! A simple framed request and response protocol.
+
 use core::convert::Infallible;
 use arduino_hal::prelude::{_embedded_hal_serial_Read as Read};
 

@@ -1,10 +1,8 @@
 #![no_std]
 #![no_main]
 
-use arduino_hal::prelude::_embedded_hal_serial_Read as Read;
-use packet::{Delimited, Deserialize, incoming, is_whitespace, outgoing};
-use pin::InteractableCtx;
-use ufmt::uwrite;
+use packet::{FrameError, incoming, outgoing, read_frame, surround_frame};
+use pin::{InteractableCtx, PinId};
 
 mod panic;
 mod packet;
@@ -17,104 +15,100 @@ fn main() -> ! {
     let mut adc = arduino_hal::adc::Adc::new(dp.ADC, <_>::default());
     let mut interactive = pin::collect_pins!(pins);
     let mut serial = arduino_hal::default_serial!(dp, pins, 9600);
-    let ctx = &mut InteractableCtx { adc: &mut adc };
+    let mut ctx = &mut InteractableCtx { adc: &mut adc };
 
-    uwrite!(serial, "{}", Delimited(outgoing::Packet::Ready));
+    let mut buffer = heapless::Deque::new();
 
     loop {
-        match serial.read() {
-            Ok(first) => {
-                if is_whitespace(first) {
-                    continue;
-                }
-
-                let mut peek = Some(first);
-                let mut reader = CountingReader { inner: &mut serial, count: 0 };
-                let response = match <_>::deserialize(&mut reader, &mut peek, true) {
-                    Ok(Err(())) => {
-                        outgoing::Packet::MalformedPacket { pos: reader.count }
+        match read_frame(&mut serial, &mut buffer) {
+            Err(FrameError::NotMagic) => {
+                _ = buffer.pop_front();
+            },
+            Err(FrameError::ChecksumMismatch) => {
+                buffer.clear();
+            },
+            Ok(payload) => {
+                let response = match incoming::deserialize(payload) {
+                    Err(incoming::Error::UnexpectedEndOfPacket) => {
+                        outgoing::Response::NACK { message: b"Unexpected end of packet" }
                     },
-                    Ok(Ok(Delimited(None))) => {
-                        continue;
+                    Err(incoming::Error::UnexpectedExcessData) => {
+                        outgoing::Response::NACK { message: b"Unexpected excess data" }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::Ping)))) => {
-                        outgoing::Packet::Pong
+                    Err(incoming::Error::InvalidPinMode) => {
+                        outgoing::Response::NACK { message: b"Invalid pin mode" }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::Config)))) => {
-                        outgoing::Packet::Config { collection: &interactive }
+                    Err(incoming::Error::InvalidPacketId) => {
+                        outgoing::Response::NACK { message: b"Invalid packet id" }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::GetPinPower { pin })))) => {
-                        match interactive[pin].power(ctx) {
-                            Ok(power) => {
-                                outgoing::Packet::PinPowerResponse { pin, power }
-                            },
-                            Err(()) => {
-                                outgoing::Packet::PinGetPowerDenied { pin }
-                            },
+                    Ok(incoming::Request::Ping { }) => {
+                        outgoing::Response::Empty()
+                    },
+                    Ok(incoming::Request::GetConfig { }) => {
+                        outgoing::Response::Config { model: b"Arduino Uno", pins: &interactive }
+                    },
+                    Ok(incoming::Request::GetPinPower { pin }) => {
+                        match PinId::try_from(pin) {
+                            Err(()) => outgoing::Response::NACK { message: b"Invalid pin id" },
+                            Ok(pin) => {
+                                match interactive[pin].power(&mut ctx) {
+                                    Ok(power) => outgoing::Response::Power(power),
+                                    Err(()) => outgoing::Response::NACK { message: b"Denied get pin power" },
+                                }
+                            }
                         }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::GetPinMode { pin })))) => {
-                        match interactive[pin].mode(ctx) {
-                            Ok(mode) => {
-                                outgoing::Packet::PinModeResponse { pin, mode }
-                            },
-                            Err(()) => {
-                                outgoing::Packet::PinGetPowerDenied { pin }
-                            },
+                    Ok(incoming::Request::GetPinMode { pin }) => {
+                        match PinId::try_from(pin) {
+                            Err(()) => outgoing::Response::NACK { message: b"Invalid pin id" },
+                            Ok(pin) => {
+                                match interactive[pin].mode(&mut ctx) {
+                                    Ok(mode) => outgoing::Response::Mode(mode),
+                                    Err(()) => outgoing::Response::NACK { message: b"Denied get pin power" },
+                                }
+                            }
                         }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::PinFlags { pin })))) => {
-                        let flags =  interactive[pin].flags();
-                        outgoing::Packet::PinFlagsResponse { pin, flags }
-                    },
-                    Ok(Ok(Delimited(Some(incoming::Packet::SetPinPower { pin, power })))) => {
-                        let interactive_pin = &mut interactive[pin];
-                        match interactive_pin.set_power(power, ctx) {
-                            Ok(power) => {
-                                outgoing::Packet::PinPowerResponse { pin, power }
-                            },
-                            Err(()) => {
-                                outgoing::Packet::PinSetPowerDenied { pin }
-                            },
+                    Ok(incoming::Request::GetPinFlags { pin }) => {
+                        match PinId::try_from(pin) {
+                            Err(()) => outgoing::Response::NACK { message: b"Invalid pin id" },
+                            Ok(pin) => {
+                                outgoing::Response::Flags(interactive[pin].flags())
+                            }
                         }
                     },
-                    Ok(Ok(Delimited(Some(incoming::Packet::SetPinMode { pin, mode })))) => {
-                        match interactive[pin].set_mode(mode, ctx) {
-                            Ok(()) => {
-                                outgoing::Packet::PinModeResponse { pin, mode }
-                            },
-                            Err(()) => {
-                                outgoing::Packet::UnsupportedPinMode { pin, mode }
-                            },
+                    Ok(incoming::Request::SetPinPower { pin, power }) => {
+                        match PinId::try_from(pin) {
+                            Err(()) => outgoing::Response::NACK { message: b"Invalid pin id" },
+                            Ok(pin) => {
+                                match interactive[pin].set_power(power, &mut ctx) {
+                                    Ok(power) => outgoing::Response::Power(power),
+                                    Err(()) => outgoing::Response::NACK { message: b"Denied set pin power" },
+                                }
+                            }
+                        }
+                    },
+                    Ok(incoming::Request::SetPinMode { pin, mode }) => {
+                        match PinId::try_from(pin) {
+                            Err(()) => outgoing::Response::NACK { message: b"Invalid pin id" },
+                            Ok(pin) => {
+                                match interactive[pin].set_mode(mode, &mut ctx) {
+                                    Ok(()) => outgoing::Response::Mode(mode),
+                                    Err(()) => outgoing::Response::NACK { message: b"Denied set pin mode" },
+                                }
+                            }
                         }
                     },
                 };
 
-                uwrite!(serial, "{}", Delimited(response));
-            },
-            Err(nb::Error::WouldBlock) => {
-                for pin in &mut interactive {
-                    if let Some(power) = pin.poll_change(ctx) {
-                        let response = outgoing::Packet::PinPowerResponse { pin: pin.id(), power };
-                        uwrite!(serial, "{}", Delimited(response));
-                    }
+                buffer.clear();
+                outgoing::serialize(&response, &mut buffer);
+                surround_frame(&mut buffer);
+
+                for byte in buffer.iter() {
+                    serial.write_byte(*byte);
                 }
             },
         }
-    }
-}
-
-pub struct CountingReader<'a, R> {
-    pub inner: &'a mut R,
-    pub count: usize,
-}
-
-impl<R: Read<T>, T> Read<T> for CountingReader<'_, R> {
-    type Error = R::Error;
-
-    fn read(&mut self) -> nb::Result<T, Self::Error> {
-        let word = self.inner.read()?;
-        self.count += 1;
-        Ok(word)
     }
 }

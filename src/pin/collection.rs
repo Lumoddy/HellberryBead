@@ -4,8 +4,6 @@ use arduino_hal::adc;
 
 use super::{Interactable, PinId};
 
-use ufmt::{uDisplay, uWrite, uwrite};
-
 macro_rules! collection_impl {
     (
         $(
@@ -73,7 +71,23 @@ macro_rules! collection_impl {
                     }
                 }
             }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let mut count = 0;
+                let Some(mut i) = self.index else {
+                    return (count, Some(count));
+                };
+                loop {
+                    count += 1;
+                    let Some(next) = i.next() else {
+                        return (count, Some(count));
+                    };
+                    i = next;
+                }
+            }
         }
+
+        impl ExactSizeIterator for CollectionIter<'_> { }
 
         pub struct CollectionIterMut<'a> {
             source: &'a mut Collection,
@@ -98,26 +112,23 @@ macro_rules! collection_impl {
                     }
                 }
             }
-        }
 
-        impl uDisplay for Collection {
-            fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
-            where
-                W: uWrite + ?Sized {
-                uwrite!(f, "{{ model: \"Arduino Uno\", pins: [")?;
-                let mut first = true;
-                for pin in self {
-                    if first {
-                        first = false;
-                    } else {
-                        uwrite!(f, ", ")?;
-                    }
-                    uwrite!(f, "{{ name: \"{}\", flags: {} }}", pin.id(), pin.flags())?;
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let mut count = 0;
+                let Some(mut i) = self.index else {
+                    return (count, Some(count));
+                };
+                loop {
+                    count += 1;
+                    let Some(next) = i.next() else {
+                        return (count, Some(count));
+                    };
+                    i = next;
                 }
-                uwrite!(f, "] }}")?;
-                Ok(())
             }
         }
+
+        impl ExactSizeIterator for CollectionIterMut<'_> { }
     };
 }
 
@@ -158,6 +169,18 @@ impl Collection {
         CollectionIterMut {
             source: self,
             index: Some(PinId::first()),
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        let mut count = 1;
+        let mut i = PinId::first();
+        loop {
+            count += 1;
+            let Some(next) = i.next() else {
+                return count;
+            };
+            i = next;
         }
     }
 }

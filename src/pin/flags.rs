@@ -1,5 +1,4 @@
 use bitflags::bitflags;
-use ufmt::{uDisplay, uWrite, uwrite};
 
 use super::PinMode;
 
@@ -11,53 +10,6 @@ bitflags! {
         const ANALOG_INPUT = 1 << 2;
         const ANALOG_OUTPUT = 1 << 3;
         const RESERVED = 1 << 4;
-    }
-}
-
-impl uDisplay for PinFlags {
-    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
-    where
-        W: uWrite + ?Sized {
-        if self.is_empty() {
-            uwrite!(f, "0")
-        } else {
-            let mut is_first = true;
-            if self.contains(PinFlags::DIGITAL_INPUT) {
-                if !is_first {
-                    uwrite!(f, " | ")?;
-                }
-                uwrite!(f, "DIGITAL_INPUT")?;
-                is_first = false;
-            }
-            if self.contains(PinFlags::DIGITAL_OUTPUT) {
-                if !is_first {
-                    uwrite!(f, " | ")?;
-                }
-                uwrite!(f, "DIGITAL_OUTPUT")?;
-                is_first = false;
-            }
-            if self.contains(PinFlags::ANALOG_INPUT) {
-                if !is_first {
-                    uwrite!(f, " | ")?;
-                }
-                uwrite!(f, "ANALOG_INPUT")?;
-                is_first = false;
-            }
-            if self.contains(PinFlags::ANALOG_OUTPUT) {
-                if !is_first {
-                    uwrite!(f, " | ")?;
-                }
-                uwrite!(f, "ANALOG_OUTPUT")?;
-                is_first = false;
-            }
-            if self.contains(PinFlags::RESERVED) {
-                if !is_first {
-                    uwrite!(f, " | ")?;
-                }
-                uwrite!(f, "RESERVED")?;
-            }
-            Ok(())
-        }
     }
 }
 

@@ -68,8 +68,7 @@ pub fn read_frame<'a, R: Read<u8>>(
     }
 }
 
-pub fn surround_frame(buffer: &mut heapless::Deque<u8, MAX_PACKET_SIZE>)
-{
+pub fn surround_frame(buffer: &mut heapless::Deque<u8, MAX_PACKET_SIZE>) {
     let mut crc = CRC16::default();
     for byte in buffer.iter() {
         crc.resume(*byte);

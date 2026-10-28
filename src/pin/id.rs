@@ -4,8 +4,7 @@ pub(super) trait ConstPinId {
     const ID: PinId;
 }
 
-macro_rules! impl_id
-{
+macro_rules! impl_id {
     ($($id:ident($port:ty) = $name:literal),+$(,)?) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
         pub enum PinId {

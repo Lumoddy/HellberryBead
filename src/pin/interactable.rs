@@ -23,7 +23,7 @@ pub trait Interactable<ADC> {
 
     fn mode(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Result<PinMode, ()>;
 
-    fn set_power(&mut self, power: u8, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()>;
+    fn set_power(&mut self, power: u8, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u8, ()>;
 
     fn set_mode(&mut self, mode: PinMode, ctx: &mut InteractableCtx<'_, ADC>) -> Result<(), ()>;
 }
@@ -39,7 +39,7 @@ impl<T: Interactable<ADC> + ?Sized, ADC> Interactable<ADC> for &mut T {
 
     fn mode(&mut self, ctx: &mut InteractableCtx<'_, ADC>) -> Result<PinMode, ()> { T::mode(self, ctx) }
 
-    fn set_power(&mut self, power: u8, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> { T::set_power(self, power, ctx) }
+    fn set_power(&mut self, power: u8, ctx: &mut InteractableCtx<'_, ADC>) -> Result<u8, ()> { T::set_power(self, power, ctx) }
 
     fn set_mode(&mut self, mode: PinMode, ctx: &mut InteractableCtx<'_, ADC>) -> Result<(), ()> { T::set_mode(self, mode, ctx) }
 }
@@ -75,7 +75,7 @@ impl<P: ConstPinId, ADC> Interactable<ADC> for ReservedPin<P> {
         Err(())
     }
 
-    fn set_power(&mut self, _: u8, _: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> {
+    fn set_power(&mut self, _: u8, _: &mut InteractableCtx<'_, ADC>) -> Result<u8, ()> {
         Err(())
     }
 
@@ -167,7 +167,7 @@ impl<P: ConstPinId + port::PinOps, ADC> Interactable<ADC> for DiDoPin<P>
         }
     }
 
-    fn set_power(&mut self, power: u8, _: &mut InteractableCtx<'_, ADC>) -> Result<u16, ()> {
+    fn set_power(&mut self, power: u8, _: &mut InteractableCtx<'_, ADC>) -> Result<u8, ()> {
         match self {
             Self::Ignored { .. } => {
                 Err(())
@@ -178,7 +178,7 @@ impl<P: ConstPinId + port::PinOps, ADC> Interactable<ADC> for DiDoPin<P>
             Self::DigitalOutput { pin } => {
                 if power > 0 {
                     pin.set_high();
-                    Ok(1023)
+                    Ok(255)
                 } else {
                     pin.set_low();
                     Ok(0)
@@ -360,7 +360,7 @@ where
         }
     }
 
-    fn set_power(&mut self, power: u8, _: &mut InteractableCtx<'_, adc::Adc>) -> Result<u16, ()> {
+    fn set_power(&mut self, power: u8, _: &mut InteractableCtx<'_, adc::Adc>) -> Result<u8, ()> {
         match self {
             Self::Ignored { .. } => {
                 Err(())
@@ -371,13 +371,10 @@ where
             Self::DigitalOutput { pin } => {
                 if power > 0 {
                     pin.set_high();
+                    Ok(255)
                 } else {
                     pin.set_low();
-                }
-                if power == 255 {
-                    Ok(1023)
-                } else {
-                    Ok(power as u16 * 4)
+                    Ok(0)
                 }
             },
             Self::AnalogInput { .. } => {
